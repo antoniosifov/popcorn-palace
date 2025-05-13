@@ -1,0 +1,141 @@
+body {
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    background: #0f0f1a;
+    color: #fff;
+  }
+  
+  header {
+    text-align: center;
+    padding: 20px 20px;
+    background-color: #1c1c2c;
+  }
+
+  .navbar {
+    position: sticky;
+    top: 0;
+    background-color: rgba(15, 15, 26, 0.95);
+    padding: 10px 20px;
+    z-index: 999;
+    box-shadow: 0 2px 10px rgba(192, 132, 252, 0.15);
+  }
+  
+  .navbar ul {
+    list-style: none;
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    margin: 0;
+    padding: 0;
+  }
+  
+  .navbar li a {
+    color: #c084fc;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 1rem;
+    transition: color 0.3s;
+  }
+  
+  .navbar li a:hover {
+    color: #f3e8ff;
+  }  
+  
+  header h1 {
+    font-size: 3rem;
+    color: #c084fc;
+  }
+  
+  .section {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 50px 10%;
+    gap: 40px;
+    flex-wrap: wrap;
+    opacity: 0;
+    transform: translateY(40px);
+    animation: fadeInUp 1.2s ease forwards;
+    animation-delay: var(--delay, 0s);
+  }
+  
+  .row {
+    flex-direction: row;
+  }
+  
+  .row-reverse {
+    flex-direction: row-reverse;
+  }
+  
+  .section-img {
+    width: 1000px;
+    max-width: 100%;
+    border-radius: 20px;
+    box-shadow: 0 0 20px rgba(192, 132, 252, 0.5);
+  }
+  
+  .section-content {
+    max-width: 300px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .section-button {
+    display: inline-block;
+    padding: 20px 40px;
+    font-size: 1.5rem;
+    background-color: #a855f7;
+    color: rgb(0, 0, 0);
+    text-decoration: none;
+    border-radius: 12px;
+    box-shadow: 0 0 10px #a855f7;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+  
+  .section-button:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 20px #c084fc;
+  }
+  
+  .section-desc {
+    margin-top: 12px;
+    color: #d8b4fe;
+    font-size: 1rem;
+    line-height: 1.4;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+  
+
+  
+  @media (max-width: 768px) {
+    .section {
+      flex-direction: column !important;
+      text-align: center;
+    }
+  
+    .section-content {
+      align-items: center;
+      text-align: center;
+    }
+  
+    .section-img {
+      width: 80%;
+    }
+  
+    .section-button {
+      margin-top: 20px;
+    }
+  }
+  
+  /* 🔥 Анимация появления */
+  @keyframes fadeInUp {
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  

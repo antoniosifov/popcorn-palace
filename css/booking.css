@@ -1,0 +1,79 @@
+/* Центрирование формы бронирования */
+#book-ticket {
+    max-width: 600px;
+    margin: 50px auto;
+    padding: 25px;
+    background-color: #1c1c2c;
+    border-radius: 12px;
+    box-shadow: 0 0 20px rgba(192, 132, 252, 0.2);
+    text-align: center;
+  }
+  
+  /* Заголовок */
+  #book-ticket h2 {
+    color: #c084fc;
+    margin-bottom: 20px;
+  }
+  
+  /* Селект для сеансов */
+  #add-showtimeId {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 1rem;
+    background-color: #1c1c2c;
+    color: #ffffff;
+    border: 1px solid #a855f7;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(168, 85, 247, 0.2);
+    transition: box-shadow 0.3s, border-color 0.3s;
+    margin-bottom: 12px;
+  }
+  
+  #add-showtimeId:focus {
+    outline: none;
+    border-color: #c084fc;
+    box-shadow: 0 0 15px rgba(192, 132, 252, 0.6);
+  }
+  
+  #add-showtimeId option {
+    background-color: #1c1c2c;
+    color: #fff;
+  }
+  
+  /* Инпуты и кнопка */
+  #booking-form input {
+    padding: 10px;
+    margin: 8px 0;
+    width: 100%;
+    border: 1px solid #555;
+    border-radius: 8px;
+    background-color: #2c2c3c;
+    color: white;
+  }
+  
+  #booking-form button {
+    background-color: #a855f7;
+    color: black;
+    font-size: 1rem;
+    padding: 12px 20px;
+    border-radius: 10px;
+    margin-top: 10px;
+    cursor: pointer;
+    transition: transform 0.3s, box-shadow 0.3s;
+  }
+  
+  #booking-form button:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 20px #c084fc;
+  }
+  
+  /* Результат */
+  #booking-result {
+    margin-top: 20px;
+    color: #d8b4fe;
+    background-color: #1a1a2b;
+    padding: 15px;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(192, 132, 252, 0.15);
+  }
+  
