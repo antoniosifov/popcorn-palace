@@ -6,6 +6,36 @@
     border-radius: 12px;
     box-shadow: 0 0 20px rgba(192, 132, 252, 0.2);
   }
+
+  .table-wrapper {
+    overflow-x: auto;
+  }
+
+  .table-status.error,
+  .toast.error {
+    color: #fca5a5;
+  }
+
+  .update-btn {
+    background-color: #22c55e;
+    color: #111827;
+  }
+
+  .delete-btn {
+    background-color: #ef4444;
+    color: #fff;
+  }
+
+  .inline-form {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px;
+    align-items: center;
+  }
+
+  .inline-form input {
+    box-sizing: border-box;
+  }
   
   #showtime-list h2,
   #get-by-id h2,
@@ -37,7 +67,7 @@
     background-color: #2f2f45;
   }
   
-  /* Стили для кнопок */
+  /* Buttons */
   button {
     padding: 8px 16px;
     margin: 4px;
@@ -48,9 +78,9 @@
     transition: background-color 0.3s, transform 0.3s;
   }
   
-  /* Кнопка Update */
+  /* Update button */
   button[onclick^="updateShowtime"] {
-    background-color: #22c55e; /* зеленая */
+    background-color: #22c55e;
     color: black;
   }
   
@@ -59,9 +89,9 @@
     transform: scale(1.05);
   }
   
-  /* Кнопка Delete */
+  /* Delete button */
   button[onclick^="deleteShowtime"] {
-    background-color: #ef4444; /* красная */
+    background-color: #ef4444;
     color: black;
   }
   
@@ -70,7 +100,7 @@
     transform: scale(1.05);
   }
   
-  /* Кнопки формы Add/Get */
+  /* Add and Get buttons */
   #add-form button, #get-by-id button {
     background-color: #a855f7;
     color: black;
@@ -86,7 +116,7 @@
     box-shadow: 0 0 20px #c084fc;
   }
   
-  /* Инпуты */
+  /* Inputs */
   input {
     padding: 10px;
     margin: 8px 0;
@@ -174,7 +204,3 @@
     color: white;
     transform: scale(1.08);
   }
-  
-  
-  
-  

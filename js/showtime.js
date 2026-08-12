@@ -1,296 +1,274 @@
-let updatingShowtimeId = null; // хранит ID сеанса, который мы редактируем
+const API_URL = window.POPCORN_CONFIG.apiUrl;
 
-document.addEventListener('DOMContentLoaded', () => {
-    loadShowtimes();
-    loadMoviesToSelect();
+let movies = [];
+let showtimes = [];
+
+document.addEventListener("DOMContentLoaded", async () => {
+  document.getElementById("get-showtime-button").addEventListener("click", getShowtimeById);
+  document.getElementById("add-form").addEventListener("submit", addShowtime);
+
+  await loadMoviesToSelect();
+  await loadShowtimes();
 });
 
+async function apiRequest(path, options = {}) {
+  const response = await fetch(`${API_URL}${path}`, options);
 
-// LOADING SHOWTIMES
-async function loadShowtimes() 
-{
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`;
     try {
-        const response = await fetch('http://localhost:8080/showtimes/all')
-
-        if (!response.ok) 
-        {
-                throw new Error('Network error' + response.status)
-        }
-
-        listShowtimes = await response.json()
-        const tableBody = document.getElementById('showtime-table-body'); // 📋 Находим элемент таблицы
-        tableBody.innerHTML = ''; // Очищаем, если что-то было
-
-        listShowtimes.forEach(showtime => {
-            const row = document.createElement('tr'); // Создаем новую строку таблицы
-
-            row.innerHTML = `
-                <td>${showtime.id}</td>
-                <td>${showtime.movieId} (${getMovieTitleById(showtime.movieId)})</td>
-                <td>${showtime.theater}</td>
-                <td>${showtime.price}</td>
-                <td>${formatDateTime(showtime.startTime)}</td>
-                <td>${formatDateTime(showtime.endTime)}</td>
-                <td>
-                    <button class="update-btn" onclick="updateShowtime(${showtime.id})">Update</button>
-                    <button class="delete-btn" onclick="deleteShowtime(${showtime.id})">Delete</button>
-                </td>
-            `;
-
-            row.classList.add('fade-in');
-            tableBody.appendChild(row); // Добавляем строку в таблицу
-        });
-
-    } catch (error) {
-        console.error('Error loading showtimes:', error); // ⚡ Выводим ошибку в консоль
+      const error = await response.json();
+      message = error.message || error.error || message;
+    } catch {
+      // The API may return an empty response body.
     }
+    throw new Error(message);
+  }
 
+  return response;
 }
 
-function formatDateTime(dateTimeString) {
-    const options = {
-        year: 'numeric', month: '2-digit', day: '2-digit',
-        hour: '2-digit', minute: '2-digit'
-    };
-    return new Date(dateTimeString).toLocaleString('en-GB', options);
+async function loadMoviesToSelect() {
+  const select = document.getElementById("add-movieId");
+  select.innerHTML = '<option value="">Select Movie</option>';
+
+  try {
+    const response = await apiRequest("/movies/all");
+    movies = await response.json();
+
+    movies.forEach((movie) => {
+      const option = document.createElement("option");
+      option.value = movie.id;
+      option.textContent = `${movie.title} (${movie.releaseYear})`;
+      select.append(option);
+    });
+  } catch (error) {
+    showToast(`Unable to load movies: ${error.message}`, true);
+  }
 }
 
+async function loadShowtimes() {
+  const tableBody = document.getElementById("showtime-table-body");
+  tableBody.replaceChildren(createStatusRow("Loading showtimes..."));
 
-//GET SHOWTIME BY ID
-async function getShowtimeById() 
-{
-    const id = document.getElementById('get-id-input').value;
+  try {
+    const response = await apiRequest("/showtimes/all");
+    showtimes = await response.json();
 
-    if (!id) 
-    {
-        alert('Please enter a Showtime ID');
-        return;
+    tableBody.replaceChildren();
+    if (showtimes.length === 0) {
+      tableBody.append(createStatusRow("No showtimes have been added yet."));
+      return;
     }
 
-    try {
-        const response = await fetch(`http://localhost:8080/showtimes/${id}`);
-
-        if (!response.ok)
-        {
-            throw new Error(`Showtime not found. Status: ${response.status}`);
-        }
-
-        const showtime = await response.json();
-
-        const resultElement = document.getElementById('showtime-by-id-result');
-        resultElement.innerHTML = `
-            <div style="background:#1c1c2c; border:1px solid #c084fc; padding:15px; border-radius:12px; margin-top:15px; box-shadow: 0 0 10px #a855f7;">
-                <p><strong>ID:</strong> ${showtime.id}</p>
-                <p><strong>Movie ID:</strong> ${showtime.movieId}</p>
-                <p><strong>Theater:</strong> ${showtime.theater}</p>
-                <p><strong>Price:</strong> $${showtime.price}</p>
-                <p><strong>Start Time:</strong> ${formatDateTime(showtime.startTime)}</p>
-                <p><strong>End Time:</strong> ${formatDateTime(showtime.endTime)}</p>
-            </div>
-        `;
-
-    } catch (error) {
-        console.error('Error getting showtime:', error);
-        document.getElementById('showtime-by-id-result').textContent = '❌ Showtime not found or server error.';
-    }
+    showtimes.forEach((showtime) => tableBody.append(createShowtimeRow(showtime)));
+  } catch (error) {
+    tableBody.replaceChildren(createStatusRow(`Unable to load showtimes: ${error.message}`, true));
+  }
 }
 
+function createShowtimeRow(showtime) {
+  const row = document.createElement("tr");
+  row.className = "fade-in";
 
+  const values = [
+    showtime.id,
+    `${showtime.movieId} (${getMovieTitleById(showtime.movieId)})`,
+    showtime.theater,
+    `$${Number(showtime.price).toFixed(2)}`,
+    formatDateTime(showtime.startTime),
+    formatDateTime(showtime.endTime),
+  ];
 
-// ADD SHOWTIME
-document.getElementById('add-form').addEventListener('submit', async function (event) {
-    event.preventDefault();
-  
-    const movieId = Number(document.getElementById('add-movieId').value);
-    const movie = movies.find(m => m.id === movieId); // 👈 ищем весь объект Movie
-  
-    if (!movie) {
-        showToast("❌ Movie not found.");
-        return;
-    }
-  
-    const theater = document.getElementById('add-theater').value;
-    const price = Number(document.getElementById('add-price').value);
-    const startTime = document.getElementById('add-startTime').value;
-    const endTime = document.getElementById('add-endTime').value;
-  
-    const showtime = {
-      movie,
-      theater,
-      price,
-      start_time: startTime,
-      end_time: endTime
-    };
-    
-    console.log("📤 Отправляем обновлённый сеанс:", showtime);
-    try {
-      const response = await fetch('http://localhost:8080/showtimes', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(showtime)
-      });
-  
-      if (!response.ok) {
-        throw new Error('Failed to add showtime. Status: ' + response.status);
-      }
-  
-      showToast('✅ Showtime added successfully!');
-      document.getElementById('add-form').reset();
-      loadShowtimes();
-    } catch (error) {
-      console.error('Error adding showtime:', error);
-      showToast('❌ Error adding showtime.');
-    }
+  values.forEach((value) => {
+    const cell = document.createElement("td");
+    cell.textContent = value;
+    row.append(cell);
   });
-  
-  
 
-  let movies = []; // ⬅️ сюда загрузим все фильмы
+  const actions = document.createElement("td");
+  const updateButton = document.createElement("button");
+  updateButton.type = "button";
+  updateButton.className = "update-btn";
+  updateButton.textContent = "Update";
+  updateButton.addEventListener("click", () => showUpdateForm(showtime.id, row));
 
-  // MOVIE SELECT IN ADD SHOWTIME FORM
-  async function loadMoviesToSelect() {
-    try {
-      const response = await fetch('http://localhost:8080/movies/all');
-      if (!response.ok) throw new Error('Failed to load movies');
-  
-      movies = await response.json();
-      const select = document.getElementById('add-movieId');
-      select.innerHTML = '<option value="">Select Movie</option>';
-  
-      movies.forEach(movie => {
-        const option = document.createElement('option');
-        option.value = movie.id;
-        option.textContent = `${movie.title} (${movie.releaseYear})`;
-        select.appendChild(option);
-      });
-    } catch (error) {
-      console.error('Error loading movies:', error);
-    }
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.className = "delete-btn";
+  deleteButton.textContent = "Delete";
+  deleteButton.addEventListener("click", () => deleteShowtime(showtime.id));
+
+  actions.append(updateButton, deleteButton);
+  row.append(actions);
+  return row;
+}
+
+function createStatusRow(message, isError = false) {
+  const row = document.createElement("tr");
+  const cell = document.createElement("td");
+  cell.colSpan = 7;
+  cell.className = isError ? "table-status error" : "table-status";
+  cell.textContent = message;
+  row.append(cell);
+  return row;
+}
+
+async function getShowtimeById() {
+  const id = document.getElementById("get-id-input").value;
+  const result = document.getElementById("showtime-by-id-result");
+
+  if (!id) {
+    result.textContent = "Enter a showtime ID.";
+    return;
   }
 
-
-  function getMovieTitleById(id) {
-    const movie = movies.find(m => m.id === id);
-    return movie ? movie.title : 'Unknown';
+  try {
+    const response = await apiRequest(`/showtimes/${id}`);
+    const showtime = await response.json();
+    result.textContent = [
+      `ID: ${showtime.id}`,
+      `Movie: ${getMovieTitleById(showtime.movieId)} (#${showtime.movieId})`,
+      `Theater: ${showtime.theater}`,
+      `Price: $${Number(showtime.price).toFixed(2)}`,
+      `Starts: ${formatDateTime(showtime.startTime)}`,
+      `Ends: ${formatDateTime(showtime.endTime)}`,
+    ].join("\n");
+  } catch (error) {
+    result.textContent = `Unable to find showtime: ${error.message}`;
   }
+}
 
-  
-  // DELETE SHOWTIME
-  async function deleteShowtime(id) {
-    if (!confirm(`❗ Are you sure you want to delete showtime #${id}?`)) return;
-  
-    try {
-      const response = await fetch(`http://localhost:8080/showtimes/${id}`, {
-        method: 'DELETE'
-      });
-  
-      if (!response.ok) {
-        throw new Error('Failed to delete showtime. Status: ' + response.status);
-      }
-  
-      showToast(`🗑️ Showtime #${id} deleted.`);
-      loadShowtimes(); // 🔄 Обновим таблицу
-    } catch (error) {
-      console.error('Error deleting showtime:', error);
-      showToast('❌ Failed to delete showtime.');
-    }
+async function addShowtime(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const movieId = Number(document.getElementById("add-movieId").value);
+
+  try {
+    await apiRequest("/showtimes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(readShowtimeForm(movieId)),
+    });
+    form.reset();
+    showToast("Showtime added successfully.");
+    await loadShowtimes();
+  } catch (error) {
+    showToast(`Unable to add showtime: ${error.message}`, true);
   }
+}
 
+function readShowtimeForm(movieId, id = "add") {
+  return {
+    movie: { id: movieId },
+    theater: document.getElementById(`${id}-theater`).value.trim(),
+    price: Number(document.getElementById(`${id}-price`).value),
+    start_time: document.getElementById(`${id}-startTime`).value,
+    end_time: document.getElementById(`${id}-endTime`).value,
+  };
+}
 
-  // UPDATE SHOWTIME
-  function updateShowtime(id) {
-    // Удаляем предыдущую форму, если она уже есть
-    const oldFormRow = document.querySelector('.update-row');
-    if (oldFormRow) oldFormRow.remove();
-  
-    const showtime = listShowtimes.find(s => s.id === id);
-    if (!showtime) {
-        showToast('❌ Showtime not found!');
-        return;
-    }
-  
-    const table = document.getElementById('showtime-table-body');
-    const row = [...table.rows].find(r => r.cells[0].textContent == id);
-  
-    // Создаём новую строку с формой
-    const formRow = document.createElement('tr');
-    formRow.classList.add('update-row');
-    formRow.innerHTML = `
-      <td colspan="7">
-        <form onsubmit="submitUpdate(event, ${id})" class="inline-form">
-          <input type="text" id="update-theater-${id}" value="${showtime.theater}" placeholder="Theater" required />
-          <input type="number" id="update-price-${id}" value="${showtime.price}" placeholder="Price" required />
-          <input type="datetime-local" id="update-start-${id}" value="${showtime.startTime.slice(0,16)}" required />
-          <input type="datetime-local" id="update-end-${id}" value="${showtime.endTime.slice(0,16)}" required />
-          <button type="submit">Save</button>
-        </form>
-      </td>
-    `;
-  
-    // Вставляем строку после строки нужного сеанса
-    row.after(formRow);
+function showUpdateForm(id, row) {
+  document.querySelector(".update-row")?.remove();
+  const showtime = showtimes.find((item) => item.id === id);
+  if (!showtime) return;
+
+  const formRow = document.createElement("tr");
+  formRow.className = "update-row";
+  const cell = document.createElement("td");
+  cell.colSpan = 7;
+
+  const form = document.createElement("form");
+  form.className = "inline-form";
+
+  const fields = [
+    ["theater", "text", showtime.theater],
+    ["price", "number", showtime.price],
+    ["startTime", "datetime-local", showtime.startTime.slice(0, 16)],
+    ["endTime", "datetime-local", showtime.endTime.slice(0, 16)],
+  ];
+
+  fields.forEach(([name, type, value]) => {
+    const input = document.createElement("input");
+    input.id = `update-${name}`;
+    input.type = type;
+    input.value = value;
+    input.placeholder = name;
+    input.required = true;
+    if (name === "price") input.step = "0.01";
+    form.append(input);
+  });
+
+  const saveButton = document.createElement("button");
+  saveButton.type = "submit";
+  saveButton.textContent = "Save";
+
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.textContent = "Cancel";
+  cancelButton.addEventListener("click", () => formRow.remove());
+
+  form.append(saveButton, cancelButton);
+  form.addEventListener("submit", (event) => submitUpdate(event, showtime));
+  cell.append(form);
+  formRow.append(cell);
+  row.after(formRow);
+}
+
+async function submitUpdate(event, showtime) {
+  event.preventDefault();
+
+  const updatedShowtime = {
+    movie: { id: showtime.movieId },
+    theater: document.getElementById("update-theater").value.trim(),
+    price: Number(document.getElementById("update-price").value),
+    start_time: document.getElementById("update-startTime").value,
+    end_time: document.getElementById("update-endTime").value,
+  };
+
+  try {
+    await apiRequest(`/showtimes/update/${showtime.id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updatedShowtime),
+    });
+    showToast("Showtime updated successfully.");
+    await loadShowtimes();
+  } catch (error) {
+    showToast(`Unable to update showtime: ${error.message}`, true);
   }
+}
 
-  async function submitUpdate(event, id) {
-    event.preventDefault();
-  
-    const theater = document.getElementById(`update-theater-${id}`).value;
-    const price = Number(document.getElementById(`update-price-${id}`).value);
-    const startTime = document.getElementById(`update-start-${id}`).value;
-    const endTime = document.getElementById(`update-end-${id}`).value;
-  
-    const showtime = listShowtimes.find(s => s.id === id);
-    const movie = movies.find(m => m.id === showtime.movieId);
-  
-    if (!movie) {
-        showToast('❌ Movie not found.');
-        return;
-    }
-  
-    const updatedShowtime = {
-      id,
-      movie,
-      theater,
-      price,
-      start_time: startTime,
-      end_time: endTime
-    };
-  
-    try {
-      const response = await fetch(`http://localhost:8080/showtimes/update/${id}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(updatedShowtime)
-      });
-  
-      if (!response.ok) {
-        throw new Error('Failed to update showtime. Status: ' + response.status);
-      }
-  
-      showToast('✅ Showtime updated successfully!');
-      document.querySelector('.update-row').remove(); // убираем форму
-      loadShowtimes(); // обновим таблицу
-    } catch (error) {
-      console.error('Error updating showtime:', error);
-      alert('❌ Error updating showtime.');
-    }
+async function deleteShowtime(id) {
+  if (!window.confirm(`Delete showtime #${id}?`)) return;
+
+  try {
+    await apiRequest(`/showtimes/${id}`, { method: "DELETE" });
+    showToast(`Showtime #${id} deleted.`);
+    await loadShowtimes();
+  } catch (error) {
+    showToast(`Unable to delete showtime: ${error.message}`, true);
   }
+}
 
+function getMovieTitleById(id) {
+  return movies.find((movie) => movie.id === id)?.title || "Unknown movie";
+}
 
-  function showToast(message) {
-    const toast = document.getElementById('toast');
-    toast.textContent = message;
-    toast.classList.add('show');
-    setTimeout(() => {
-      toast.classList.remove('show');
-    }, 3000);
-  }
-  
-  
-  
+function formatDateTime(value) {
+  return new Date(value).toLocaleString("en-GB", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
-  
+function showToast(message, isError = false) {
+  const toast = document.getElementById("toast");
+  toast.textContent = message;
+  toast.classList.toggle("error", isError);
+  toast.classList.add("show");
+  window.setTimeout(() => toast.classList.remove("show"), 3000);
+}

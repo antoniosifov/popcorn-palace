@@ -1,217 +1,215 @@
-document.addEventListener('DOMContentLoaded', () => {
-     loadMovies();
-   });
+const API_URL = window.POPCORN_CONFIG.apiUrl;
 
+document.addEventListener("DOMContentLoaded", () => {
+  const addMovieButton = document.getElementById("add-movie-button");
+  const addMovieForm = document.getElementById("add-movie-form");
+  const cancelAddButton = document.getElementById("cancel-add-movie");
 
-cancelButton.addEventListener('click', () => {
-  updateForm.style.display = 'none';
-});
-   
-   async function loadMovies() 
-   {
-     try {
-          const response = await fetch('http://localhost:8080/movies/all')
+  addMovieButton.addEventListener("click", () => {
+    addMovieForm.hidden = false;
+  });
 
-          if (!response.ok) 
-          {
-               throw new Error('Network error' + response.status)
-          }
-     
-          const listMovies = await response.json()
-          const movieListContainer = document.getElementById('movie-list')
-       
-          movieListContainer.innerHTML = ''
-   
-          listMovies.forEach(movie => {
-               const movieCard = document.createElement('div')
-               movieCard.classList.add('movie-card')
-     
-               movieCard.innerHTML = `
-               <img src="img/photo7.webp" alt="Movie Image" class="movie-image" />
-               <h2>${movie.title}</h2>
-               <p><strong>Genre:</strong> ${movie.genre}</p>
-               <p><strong>Duration:</strong> ${movie.duration} мин</p>
-               <p><strong>Rating:</strong> ${movie.rating}</p>
-               <p><strong>Release year:</strong> ${movie.releaseYear}</p>
-               <div class="movie-actions">
-                    <button class="update-button" data-id="${movie.id}">Update</button>
-                    <button class="delete-button" data-id="${movie.id}">Delete</button>
-               </div>
-               `;
-     
-               // movieCard.querySelector('.update-button').addEventListener('click', () => {
-               // alert(`Обновление фильма с ID: ${movie.id}`)
-               // });
-     
-               movieCard.querySelector('.delete-button').addEventListener('click', () => {
-                    deleteMovie(movie.title)
-               });
+  cancelAddButton.addEventListener("click", () => {
+    addMovieForm.hidden = true;
+    addMovieForm.reset();
+  });
 
-               movieListContainer.appendChild(movieCard)
-
-
-               const updateForm = document.createElement('form')
-               updateForm.classList.add('update-form');
-
-               updateForm.innerHTML = `
-                    <input type="text" name="title" value="${movie.title}" placeholder="Title" required />
-                    <input type="text" name="genre" value="${movie.genre}" placeholder="Genre" required />
-                    <input type="number" name="duration" value="${movie.duration}" placeholder="Duration" required />
-                    <input type="number" step="0.1" name="rating" value="${movie.rating}" placeholder="Rating" required />
-                    <input type="number" name="releaseYear" value="${movie.releaseYear}" placeholder="Release Year" required />
-                    <button type="submit">Save</button>
-                    <button type="button" class="cancel-button">Cancel</button>
-                    `
-               updateForm.style.display = 'none';
-               movieCard.appendChild(updateForm);
-
-               const updateButton = movieCard.querySelector('.update-button');
-               const cancelButton = updateForm.querySelector('.cancel-button');
-
-               updateButton.addEventListener('click', () => {
-               updateForm.style.display = 'block';
-               })
-
-cancelButton.addEventListener('click', () => {
-     updateForm.style.display = 'none';
+  addMovieForm.addEventListener("submit", addMovie);
+  loadMovies();
 });
 
-updateForm.addEventListener('submit', async (event) => {
-     event.preventDefault();
-   
-     const updatedMovie = {
-       title: updateForm.title.value,
-       genre: updateForm.genre.value,
-       duration: parseInt(updateForm.duration.value),
-       rating: parseFloat(updateForm.rating.value),
-       releaseYear: parseInt(updateForm.releaseYear.value),
-     };
-   
-     try {
-       const response = await fetch(`http://localhost:8080/movies/update/${encodeURIComponent(movie.title)}`, {
-         method: 'POST',
-         headers: {
-           'Content-Type': 'application/json'
-         },
-         body: JSON.stringify(updatedMovie)
-       });
-   
-       if (!response.ok) {
-         throw new Error(`HTTP error! status: ${response.status}`);
-       }
-   
-       // Обновим отображение фильмов
-       await loadMovies();
-     } catch (error) {
-       console.error('Error updating movie:', error);
-     }
-     });
-     })
-     } catch (error) {
-          console.error('Ошибка при получении фильмов:', error)
-     };
+async function apiRequest(path, options = {}) {
+  const response = await fetch(`${API_URL}${path}`, options);
 
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`;
+    try {
+      const error = await response.json();
+      message = error.message || error.error || message;
+    } catch {
+      // The API may return an empty response body.
+    }
+    throw new Error(message);
+  }
 
+  return response;
+}
 
-     // Создание и добавление кнопки "Add New Movie"
-// const addMovieButton = document.createElement('button');
-// addMovieButton.textContent = 'Add New Movie';
-// addMovieButton.id = 'add-movie-button';
-// document.body.appendChild(addMovieButton);
-
-// Создание и добавление формы для добавления нового фильма
-const addMovieForm = document.createElement('form');
-addMovieForm.classList.add('addMovieForm');
-addMovieForm.style.display = 'none'; // Скрыть форму по умолчанию
-
-addMovieForm.innerHTML = `
-  <input type="text" name="title" placeholder="Title" required />
-  <input type="text" name="genre" placeholder="Genre" required />
-  <input type="number" name="duration" placeholder="Duration" required />
-  <input type="number" step="0.1" name="rating" placeholder="Rating" required />
-  <input type="number" name="releaseYear" placeholder="Release Year" required />
-  <button type="submit">Add Movie</button>
-  <button type="button" class="cancel-button">Cancel</button>
-`;
-
-document.body.appendChild(addMovieForm);
-
-// Обработчик для отображения формы при нажатии на кнопку
-
-
-document.getElementById('add-movie-button').addEventListener('click', () => {
-  addMovieForm.style.display = 'block';
-});
-
-// Обработчик для скрытия формы при нажатии на кнопку "Cancel"
-addMovieForm.querySelector('.cancel-button').addEventListener('click', () => {
-  addMovieForm.style.display = 'none';
-});
-
-// Обработчик для отправки данных формы на сервер
-addMovieForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-
-  const formData = new FormData(addMovieForm);
-  const newMovie = {
-    title: formData.get('title'),
-    genre: formData.get('genre'),
-    duration: parseInt(formData.get('duration')),
-    rating: parseFloat(formData.get('rating')),
-    releaseYear: parseInt(formData.get('releaseYear')),
-  };
+async function loadMovies() {
+  const movieList = document.getElementById("movie-list");
+  movieList.replaceChildren(createStatus("Loading movies..."));
 
   try {
-    const response = await fetch('http://localhost:8080/movies', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(newMovie)
-    });
+    const response = await apiRequest("/movies/all");
+    const movies = await response.json();
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    movieList.replaceChildren();
+    if (movies.length === 0) {
+      movieList.append(createStatus("No movies have been added yet."));
+      return;
     }
 
-   
-    await loadMovies();
-    addMovieForm.reset(); // Очистить форму
-    addMovieForm.style.display = 'none'; // Скрыть форму после отправки
-
-  } catch (error) 
-  {
-    console.error('Error adding movie:', error);
+    movies.forEach((movie) => movieList.append(createMovieCard(movie)));
+  } catch (error) {
+    movieList.replaceChildren(createStatus(`Unable to load movies: ${error.message}`, true));
   }
-});
-
 }
 
+function createMovieCard(movie) {
+  const card = document.createElement("article");
+  card.className = "movie-card";
 
+  const image = document.createElement("img");
+  image.src = "img/photo7.webp";
+  image.alt = `${movie.title} poster placeholder`;
+  image.className = "movie-image";
 
+  const title = document.createElement("h2");
+  title.textContent = movie.title;
 
+  card.append(
+    image,
+    title,
+    createDetail("Genre", movie.genre),
+    createDetail("Duration", `${movie.duration} min`),
+    createDetail("Rating", movie.rating),
+    createDetail("Release year", movie.releaseYear),
+  );
 
-async function deleteMovie(title) 
-{
-     console.log(`id movie: ${title}`)
-     try {
-          const response = await fetch(`http://localhost:8080/movies/${encodeURIComponent(title)}`, { method: 'DELETE' })
+  const actions = document.createElement("div");
+  actions.className = "movie-actions";
 
-          if (!response.ok) 
-          {
-               throw new Error(`Error deleting movie: ${response.status}`);
-          }
-          
-     } catch (error) {
-          console.error('Error deleting movie:', error);
-     }
-     await loadMovies();
+  const updateButton = document.createElement("button");
+  updateButton.type = "button";
+  updateButton.className = "update-button";
+  updateButton.textContent = "Update";
+
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.className = "delete-button";
+  deleteButton.textContent = "Delete";
+  deleteButton.addEventListener("click", () => deleteMovie(movie.title));
+
+  actions.append(updateButton, deleteButton);
+  card.append(actions);
+
+  const updateForm = createUpdateForm(movie);
+  updateButton.addEventListener("click", () => {
+    updateForm.hidden = !updateForm.hidden;
+  });
+  card.append(updateForm);
+
+  return card;
 }
 
+function createDetail(label, value) {
+  const paragraph = document.createElement("p");
+  const strong = document.createElement("strong");
+  strong.textContent = `${label}: `;
+  paragraph.append(strong, document.createTextNode(String(value)));
+  return paragraph;
+}
 
-document.getElementById('back-to-home').addEventListener('click', () => {
-     window.location.href = 'http://localhost/js/';
-})
+function createUpdateForm(movie) {
+  const form = document.createElement("form");
+  form.className = "update-form";
+  form.hidden = true;
 
+  const fields = [
+    ["title", "text", movie.title],
+    ["genre", "text", movie.genre],
+    ["duration", "number", movie.duration],
+    ["rating", "number", movie.rating, "0.1"],
+    ["releaseYear", "number", movie.releaseYear],
+  ];
 
-   
+  fields.forEach(([name, type, value, step]) => {
+    const input = document.createElement("input");
+    input.name = name;
+    input.type = type;
+    input.value = value;
+    input.placeholder = name;
+    input.required = true;
+    if (step) input.step = step;
+    form.append(input);
+  });
+
+  const saveButton = document.createElement("button");
+  saveButton.type = "submit";
+  saveButton.textContent = "Save";
+
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "cancel-button";
+  cancelButton.textContent = "Cancel";
+  cancelButton.addEventListener("click", () => {
+    form.hidden = true;
+  });
+
+  form.append(saveButton, cancelButton);
+  form.addEventListener("submit", (event) => updateMovie(event, movie.title));
+  return form;
+}
+
+function readMovieForm(form) {
+  const data = new FormData(form);
+  return {
+    title: data.get("title").trim(),
+    genre: data.get("genre").trim(),
+    duration: Number(data.get("duration")),
+    rating: Number(data.get("rating")),
+    releaseYear: Number(data.get("releaseYear")),
+  };
+}
+
+async function addMovie(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+
+  try {
+    await apiRequest("/movies", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(readMovieForm(form)),
+    });
+    form.reset();
+    form.hidden = true;
+    await loadMovies();
+  } catch (error) {
+    window.alert(`Unable to add movie: ${error.message}`);
+  }
+}
+
+async function updateMovie(event, originalTitle) {
+  event.preventDefault();
+  const form = event.currentTarget;
+
+  try {
+    await apiRequest(`/movies/update/${encodeURIComponent(originalTitle)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(readMovieForm(form)),
+    });
+    await loadMovies();
+  } catch (error) {
+    window.alert(`Unable to update movie: ${error.message}`);
+  }
+}
+
+async function deleteMovie(title) {
+  if (!window.confirm(`Delete “${title}”?`)) return;
+
+  try {
+    await apiRequest(`/movies/${encodeURIComponent(title)}`, { method: "DELETE" });
+    await loadMovies();
+  } catch (error) {
+    window.alert(`Unable to delete movie: ${error.message}`);
+  }
+}
+
+function createStatus(message, isError = false) {
+  const status = document.createElement("p");
+  status.className = isError ? "page-status error" : "page-status";
+  status.textContent = message;
+  return status;
+}

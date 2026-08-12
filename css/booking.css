@@ -1,4 +1,4 @@
-/* Центрирование формы бронирования */
+/* Booking form */
 #book-ticket {
     max-width: 600px;
     margin: 50px auto;
@@ -9,13 +9,13 @@
     text-align: center;
   }
   
-  /* Заголовок */
+  /* Heading */
   #book-ticket h2 {
     color: #c084fc;
     margin-bottom: 20px;
   }
   
-  /* Селект для сеансов */
+  /* Showtime selector */
   #add-showtimeId {
     width: 100%;
     padding: 10px 12px;
@@ -40,7 +40,7 @@
     color: #fff;
   }
   
-  /* Инпуты и кнопка */
+  /* Form controls */
   #booking-form input {
     padding: 10px;
     margin: 8px 0;
@@ -67,7 +67,7 @@
     box-shadow: 0 0 20px #c084fc;
   }
   
-  /* Результат */
+  /* Result */
   #booking-result {
     margin-top: 20px;
     color: #d8b4fe;
@@ -76,4 +76,11 @@
     border-radius: 10px;
     box-shadow: 0 0 10px rgba(192, 132, 252, 0.15);
   }
-  
+
+  #booking-result:empty {
+    display: none;
+  }
+
+  #booking-result.error {
+    color: #fca5a5;
+  }

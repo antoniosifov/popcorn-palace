@@ -1,84 +1,102 @@
-document.addEventListener('DOMContentLoaded', () => {
-    loadShowtimesToSelect();
-  
-document.getElementById('booking-form').addEventListener('submit', async function (e) {
-    e.preventDefault();
+const API_URL = window.POPCORN_CONFIG.apiUrl;
 
-    const showtimeId = Number(document.getElementById('add-showtimeId').value);
-    const seatNumber = Number(document.getElementById('add-seatNumber').value);
-    const userId = document.getElementById('add-userId').value.trim();
+let showtimes = [];
 
-    if (!showtimeId || !seatNumber || !userId) {
-        alert('❗ Please fill all fields.');
-        return;
-    }
-
-    const selectedShowtime = showtimes.find(s => s.id === showtimeId);
-
-    const bookingData = {
-    showtime: {
-        id: selectedShowtime.id,
-        movie: selectedShowtime.movie,       // movie тоже объект
-        theater: selectedShowtime.theater,
-        price: selectedShowtime.price,
-        start_time: selectedShowtime.start_time,
-        end_time: selectedShowtime.end_time
-    },
-    seatNumber,
-    userId
-    };
-
-
-    try {
-        const response = await fetch('http://localhost:8080/bookings', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(bookingData)
-        });
-
-        if (!response.ok) {
-        throw new Error('Booking failed. Status: ' + response.status);
-        }
-
-        const result = await response.json();
-        document.getElementById('booking-result').textContent =
-        `✅ Booking successful! Booking ID: ${result.bookingId}`;
-
-        document.getElementById('booking-form').reset();
-    } catch (error) {
-        console.error('Error booking ticket:', error);
-        document.getElementById('booking-result').textContent =
-        '❌ Booking failed. Please try again.';
-    }
-    });
+document.addEventListener("DOMContentLoaded", async () => {
+  document.getElementById("booking-form").addEventListener("submit", submitBooking);
+  await loadShowtimesToSelect();
 });
 
-async function loadShowtimesToSelect() {
+async function apiRequest(path, options = {}) {
+  const response = await fetch(`${API_URL}${path}`, options);
+
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`;
     try {
-    const response = await fetch('http://localhost:8080/showtimes/all');
-    if (!response.ok) throw new Error('Failed to load showtimes');
-
-    const showtimes = await response.json();
-    const select = document.getElementById('add-showtimeId');
-    select.innerHTML = '<option value="">Select Showtime</option>';
-
-    showtimes.forEach(showtime => {
-        const option = document.createElement('option');
-        option.value = showtime.id;
-        option.textContent = `#${showtime.id} | ${showtime.theater} | ${formatDate(showtime.startTime)}`;
-        select.appendChild(option);
-    });
-    } catch (error) {
-    console.error('Error loading showtimes:', error);
+      const error = await response.json();
+      message = error.message || error.error || message;
+    } catch {
+      // The API may return an empty response body.
     }
+    throw new Error(message);
+  }
+
+  return response;
 }
 
-function formatDate(dateTimeString) {
-    const options = {
-    year: 'numeric', month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-    };
-    return new Date(dateTimeString).toLocaleString('en-GB', options);
+async function loadShowtimesToSelect() {
+  const select = document.getElementById("add-showtimeId");
+  select.innerHTML = '<option value="">Loading showtimes...</option>';
+  select.disabled = true;
+
+  try {
+    const response = await apiRequest("/showtimes/all");
+    showtimes = await response.json();
+    select.innerHTML = '<option value="">Select Showtime</option>';
+
+    showtimes.forEach((showtime) => {
+      const option = document.createElement("option");
+      option.value = showtime.id;
+      option.textContent = `#${showtime.id} · ${showtime.theater} · ${formatDate(showtime.startTime)}`;
+      select.append(option);
+    });
+
+    if (showtimes.length === 0) {
+      select.innerHTML = '<option value="">No showtimes available</option>';
+    }
+  } catch (error) {
+    select.innerHTML = '<option value="">Unable to load showtimes</option>';
+    setResult(`Unable to load showtimes: ${error.message}`, true);
+  } finally {
+    select.disabled = showtimes.length === 0;
+  }
+}
+
+async function submitBooking(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+
+  const showtimeId = Number(document.getElementById("add-showtimeId").value);
+  const seatNumber = Number(document.getElementById("add-seatNumber").value);
+  const userId = document.getElementById("add-userId").value.trim();
+  const selectedShowtime = showtimes.find((showtime) => showtime.id === showtimeId);
+
+  if (!selectedShowtime) {
+    setResult("Select an available showtime.", true);
+    return;
+  }
+
+  try {
+    const response = await apiRequest("/bookings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        showtime: { id: selectedShowtime.id },
+        seatNumber,
+        userId,
+      }),
+    });
+
+    const result = await response.json();
+    setResult(`Booking successful. Booking ID: ${result.bookingId}`);
+    form.reset();
+  } catch (error) {
+    setResult(`Booking failed: ${error.message}`, true);
+  }
+}
+
+function formatDate(value) {
+  return new Date(value).toLocaleString("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function setResult(message, isError = false) {
+  const result = document.getElementById("booking-result");
+  result.textContent = message;
+  result.classList.toggle("error", isError);
 }

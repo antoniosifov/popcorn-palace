@@ -1,32 +1,44 @@
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Фильмы | Popcorn Palace</title>
-    <link rel="stylesheet" href="css/styles.css" />
-    <link rel="stylesheet" href="css/movie.css" />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet" />
-    </head>
-    <body>
-        <nav class="navbar">
-            <ul>
-              <li><a href="index.html">🏠 Home</a></li>
-              <li><a href="movie.html">🎬 Movies</a></li>
-              <li><a href="showtime.html" class="active">🕐 Showtimes</a></li>
-              <li><a href="booking.html">🎟 Bookings</a></li>
-            </ul>
-        </nav>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Movies - Popcorn Palace</title>
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="css/movie.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <nav class="navbar" aria-label="Primary navigation">
+    <ul>
+      <li><a href="index.html">Home</a></li>
+      <li><a href="movie.html" class="active" aria-current="page">Movies</a></li>
+      <li><a href="showtime.html">Showtimes</a></li>
+      <li><a href="booking.html">Bookings</a></li>
+    </ul>
+  </nav>
 
-        <header>
-            <h1>🎬 Movies 🎬</h1>
-            <div class="add-movie-container">
-                <button id="add-movie-button" class="add-movie-button">➕ Add Movie</button>
-            </div>
-        </header>
-        <main class="movie-list" id="movie-list">
-            <!-- Сюда будут добавляться карточки фильмов -->
-        </main>
-        <script src="js/movie.js"></script>
-    </body>
+  <header>
+    <h1>Movies</h1>
+    <div class="add-movie-container">
+      <button id="add-movie-button" class="add-movie-button" type="button">Add Movie</button>
+    </div>
+    <form id="add-movie-form" class="addMovieForm" hidden>
+      <input type="text" name="title" placeholder="Title" required />
+      <input type="text" name="genre" placeholder="Genre" required />
+      <input type="number" name="duration" placeholder="Duration in minutes" min="1" required />
+      <input type="number" step="0.1" name="rating" placeholder="Rating" min="0" max="10" required />
+      <input type="number" name="releaseYear" placeholder="Release year" min="1888" required />
+      <button type="submit">Add Movie</button>
+      <button type="button" class="cancel-button" id="cancel-add-movie">Cancel</button>
+    </form>
+  </header>
+
+  <main class="movie-list" id="movie-list">
+    <p class="page-status">Loading movies...</p>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/movie.js"></script>
+</body>
 </html>

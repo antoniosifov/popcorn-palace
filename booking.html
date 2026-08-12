@@ -2,44 +2,40 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Bookings - Popcorn Palace</title>
   <link rel="stylesheet" href="css/styles.css" />
   <link rel="stylesheet" href="css/booking.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet" />
 </head>
 <body>
-  <nav class="navbar">
+  <nav class="navbar" aria-label="Primary navigation">
     <ul>
-      <li><a href="index.html">🏠 Home</a></li>
-      <li><a href="movie.html">🎬 Movies</a></li>
-      <li><a href="showtime.html">🕐 Showtimes</a></li>
-      <li><a href="booking.html" class="active">🎟 Bookings</a></li>
+      <li><a href="index.html">Home</a></li>
+      <li><a href="movie.html">Movies</a></li>
+      <li><a href="showtime.html">Showtimes</a></li>
+      <li><a href="booking.html" class="active" aria-current="page">Bookings</a></li>
     </ul>
   </nav>
 
-  <header>
-    <h1>🎟 Book a Seat</h1>
-  </header>
+  <header><h1>Book a Seat</h1></header>
 
-  <section id="book-ticket">
-    <h2>➕ Book a Ticket</h2>
-    <form id="booking-form">
-      <select id="add-showtimeId" required>
-        <option value="">Select Showtime</option>
-        <!-- Сеансы добавим динамически -->
-      </select>
+  <main>
+    <section id="book-ticket">
+      <h2>Book a Ticket</h2>
+      <form id="booking-form">
+        <select id="add-showtimeId" required>
+          <option value="">Select Showtime</option>
+        </select>
+        <input type="number" id="add-seatNumber" placeholder="Seat Number (1-300)" min="1" max="300" required />
+        <input type="text" id="add-userId" placeholder="User UUID" required value="84438967-f68f-4fa0-b620-0f08217e76af" />
+        <button type="submit">Book Ticket</button>
+      </form>
+      <pre id="booking-result" aria-live="polite"></pre>
+    </section>
+  </main>
 
-      <input type="number" id="add-seatNumber" placeholder="Seat Number" required />
-
-      <input type="text" id="add-userId" placeholder="User ID" required value="84438967-f68f-4fa0-b620-0f08217e76af" />
-
-      <button type="submit">Book Ticket</button>
-    </form>
-
-    <pre id="booking-result"></pre>
-  </section>
-
+  <script src="js/config.js"></script>
   <script src="js/booking.js"></script>
 </body>
 </html>

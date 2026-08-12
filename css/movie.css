@@ -9,6 +9,8 @@ header h1{font-size:3rem;color:#c084fc;margin:0}
 .section-button{width:200px;display:inline-block;padding:18px 36px;font-size:1.2rem;background-color:#a855f7;color:#fff;text-decoration:none;border-radius:12px;box-shadow:0 0 10px #a855f7;transition:transform .3s ease,box-shadow .3s ease}
 .section-button:hover{transform:scale(1.05);box-shadow:0 0 20px #c084fc}
 .movie-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:50px;padding:60px 10%}
+.page-status{grid-column:1/-1;text-align:center;color:#d8b4fe}
+.page-status.error{color:#fca5a5}
 .movie-card{background-color:#1c1c2c;border-radius:16px;padding:20px;box-shadow:0 0 20px rgba(192,132,252,.15);transition:transform .3s ease;opacity:0;transform:translateY(20px);animation:fadeIn .5s ease forwards}
 .movie-card:hover{transform:scale(1.03)}
 .movie-card h2{color:#c084fc;margin:0 0 10px}
@@ -61,6 +63,11 @@ header h1{font-size:3rem;color:#c084fc;margin:0}
   .update-form .cancel-button {
     background-color: #f44336;
     color: white;
+  }
+
+  .update-form[hidden],
+  .addMovieForm[hidden] {
+    display: none;
   }
   
 
@@ -170,13 +177,11 @@ header h1{font-size:3rem;color:#c084fc;margin:0}
   }
   
   .back-home-button:hover {
-    background-color: #c084fc; /* Более темный индиго */
+    background-color: #c084fc;
     transform: translateY(-2px);
   }
   
   .back-home-button:active {
-    background-color: #c084fc;;
+    background-color: #c084fc;
     transform: translateY(0);
   }
-  
-  
