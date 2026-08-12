@@ -12,7 +12,7 @@
 	<artifactId>popcorn-palace</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>popcorn-palace</name>
-	<description>Demo project for Spring Boot</description>
+	<description>Movie ticket booking REST API built with Spring Boot and PostgreSQL</description>
 	<url/>
 	<licenses>
 		<license/>
