@@ -8,6 +8,9 @@ import com.att.tdp.popcorn_palace.repository.ShowtimeRepository;
 import com.att.tdp.popcorn_palace.repository.MovieRepository;
 import com.att.tdp.popcorn_palace.validation.ShowtimeValidator;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
+
 import static com.att.tdp.popcorn_palace.dto.ShowtimeDTO.convertToDTO;
 
 @Service
@@ -29,6 +32,13 @@ public class ShowtimeService
     {
         Showtime showtime = showtimeRepository.findById(id).orElseThrow(() -> new NotFoundException("Showtime not found with id: " + id));
         return convertToDTO(showtime);
+    }
+
+    public List<ShowtimeDTO> getAllShowtimes()
+    {
+        return showtimeRepository.findAll().stream()
+                .map(ShowtimeDTO::convertToDTO)
+                .toList();
     }
 
     // Add showtime

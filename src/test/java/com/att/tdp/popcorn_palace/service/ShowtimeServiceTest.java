@@ -20,6 +20,36 @@ import static org.mockito.Mockito.*;
 
 public class ShowtimeServiceTest
 {
+    @DisplayName("Should return all showtimes as DTOs")
+    @Test
+    void shouldReturnAllShowtimesAsDtos()
+    {
+        ShowtimeRepository showtimeRepository = mock(ShowtimeRepository.class);
+        MovieRepository movieRepository = mock(MovieRepository.class);
+        ShowtimeValidator showtimeValidator = new ShowtimeValidator();
+        ShowtimeService showtimeService = new ShowtimeService(showtimeRepository, movieRepository, showtimeValidator);
+
+        Movie movie = new Movie();
+        movie.setId(1L);
+
+        Showtime showtime = new Showtime();
+        showtime.setId(10L);
+        showtime.setMovie(movie);
+        showtime.setTheater("Main Hall");
+        showtime.setStart_time(LocalDateTime.of(2025, 3, 25, 18, 0));
+        showtime.setEnd_time(LocalDateTime.of(2025, 3, 25, 20, 0));
+        showtime.setPrice(50.0);
+
+        when(showtimeRepository.findAll()).thenReturn(List.of(showtime));
+
+        List<ShowtimeDTO> showtimes = showtimeService.getAllShowtimes();
+
+        assertEquals(1, showtimes.size());
+        assertEquals(10L, showtimes.getFirst().getId());
+        assertEquals(1L, showtimes.getFirst().getMovieId());
+        assertEquals("Main Hall", showtimes.getFirst().getTheater());
+    }
+
     @DisplayName("Should save valid showtime")
     @Test
     void shouldSaveValidShowtime()

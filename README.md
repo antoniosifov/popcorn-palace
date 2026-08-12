@@ -12,7 +12,7 @@ A movie ticket booking backend built with Java and Spring Boot. The API manages 
 - Layered controller, service, repository, and persistence design
 - Dedicated validators and centralized JSON error responses
 - PostgreSQL for local application data and H2 for isolated tests
-- 25 automated tests covering the application context and service logic
+- 26 automated tests covering the application context and service logic
 
 ## Architecture
 
@@ -67,6 +67,7 @@ Example movie payload:
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
+| `GET` | `/showtimes/all` | List all showtimes |
 | `GET` | `/showtimes/{showtimeId}` | Get a showtime |
 | `POST` | `/showtimes` | Schedule a showtime |
 | `POST` | `/showtimes/update/{showtimeId}` | Update a showtime |
@@ -180,7 +181,7 @@ Windows:
 .\mvnw.cmd test
 ```
 
-Current suite: **25 tests passing** across application startup, movie services, showtime services, and booking services.
+Current suite: **26 tests passing** across application startup, movie services, showtime services, and booking services.
 
 ## Project structure
 
