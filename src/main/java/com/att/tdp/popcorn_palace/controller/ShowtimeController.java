@@ -5,7 +5,7 @@ import com.att.tdp.popcorn_palace.model.Showtime;
 import com.att.tdp.popcorn_palace.service.ShowtimeService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import java.util.Map;
+import java.util.List;
 
 import static com.att.tdp.popcorn_palace.dto.ShowtimeDTO.*;
 
@@ -18,6 +18,12 @@ public class ShowtimeController
     public ShowtimeController (ShowtimeService showtimeService)
     {
         this.showtimeService = showtimeService;
+    }
+
+    @GetMapping("/all")
+    public ResponseEntity<List<ShowtimeDTO>> getAllShowtimes()
+    {
+        return ResponseEntity.ok(showtimeService.getAllShowtimes());
     }
 
     @GetMapping("/{showtimeId}")
