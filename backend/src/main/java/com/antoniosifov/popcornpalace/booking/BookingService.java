@@ -7,6 +7,7 @@ import com.antoniosifov.popcornpalace.common.web.PageResponse;
 import com.antoniosifov.popcornpalace.common.web.SortFields;
 import com.antoniosifov.popcornpalace.hall.Seat;
 import com.antoniosifov.popcornpalace.hall.SeatRepository;
+import com.antoniosifov.popcornpalace.hall.SeatStatusChanged;
 import com.antoniosifov.popcornpalace.payment.Payment;
 import com.antoniosifov.popcornpalace.payment.PaymentRepository;
 import com.antoniosifov.popcornpalace.payment.PaymentService;
@@ -14,6 +15,7 @@ import com.antoniosifov.popcornpalace.payment.PaymentStatus;
 import com.antoniosifov.popcornpalace.security.CurrentUser;
 import com.antoniosifov.popcornpalace.showtime.Showtime;
 import com.antoniosifov.popcornpalace.showtime.ShowtimeRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -44,12 +46,14 @@ public class BookingService
     private final PaymentRepository paymentRepository;
     private final PaymentService paymentService;
     private final BookingEventPublisher events;
+    private final ApplicationEventPublisher applicationEvents;
     private final TransactionTemplate transaction;
     private final Clock clock;
 
     public BookingService(BookingRepository bookingRepository, ShowtimeRepository showtimeRepository,
                           SeatRepository seatRepository, PaymentRepository paymentRepository,
                           PaymentService paymentService, BookingEventPublisher events,
+                          ApplicationEventPublisher applicationEvents,
                           PlatformTransactionManager transactionManager, Clock clock)
     {
         this.bookingRepository = bookingRepository;
@@ -58,6 +62,7 @@ public class BookingService
         this.paymentRepository = paymentRepository;
         this.paymentService = paymentService;
         this.events = events;
+        this.applicationEvents = applicationEvents;
         this.transaction = new TransactionTemplate(transactionManager);
         this.clock = clock;
     }
@@ -134,6 +139,8 @@ public class BookingService
         // Written to the outbox in this same transaction: the event exists if
         // and only if the booking does.
         events.confirmed(saved);
+        // Browsers hear about it once this transaction commits.
+        applicationEvents.publishEvent(SeatStatusChanged.booked(showtimeId, List.copyOf(pricesBySeat.keySet())));
         return BookingResponse.from(saved);
     }
 
@@ -163,6 +170,8 @@ public class BookingService
             }
             booking.cancel(now);
             events.cancelled(booking);
+            applicationEvents.publishEvent(SeatStatusChanged.available(booking.getShowtime().getId(),
+                    booking.getSeats().stream().map(seat -> seat.getSeat().getId()).toList()));
 
             Payment payment = booking.getPayment();
             if (payment != null && payment.getStatus() == PaymentStatus.SUCCEEDED) {

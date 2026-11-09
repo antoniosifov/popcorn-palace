@@ -31,6 +31,13 @@ pay for the hold with the sandbox token `tok_visa` (the request needs an
 `Idempotency-Key` header with any unique value). The ticket email appears in Mailpit
 a moment later.
 
+To watch the seat map change live, open a showtime's event stream in a terminal and
+hold or book seats from Swagger UI:
+
+```sh
+curl -N http://localhost:8080/api/v1/showtimes/1/seats/stream
+```
+
 If one of the ports (8080, 5432, 6379, 29092, 8025, 1025) is taken, copy `.env.example` to `.env` and change it.
 
 ### Run the services from your IDE instead

@@ -8,6 +8,7 @@ A movie ticket booking backend built with Java 21 and Spring Boot 4. It manages 
 
 - Versioned REST API (`/api/v1`) with request/response DTOs, pagination and an allow-list for sorting
 - Halls with row-by-row seat layouts, and a seat map per showtime with prices and availability
+- Live seat map: a browser subscribes to a showtime and sees seats become held, sold and free again as it happens, whichever instance of the API made the change
 - Accounts with stateless JWT authentication and two roles: customers book, administrators manage the catalog
 - Checkout with temporary seat holds in Redis (atomic Lua scripts, automatic expiry) confirmed into bookings in PostgreSQL
 - Payments that are safe to retry: idempotency keys, a refund if the booking fails after the charge, and a job that settles payments left unfinished
@@ -18,7 +19,7 @@ A movie ticket booking backend built with Java 21 and Spring Boot 4. It manages 
 - Database schema owned by Flyway migrations that carry existing data forward; Hibernate only validates it
 - Business rules enforced by database constraints, so they hold under concurrency
 - Uniform error responses in the RFC 9457 "problem details" format with machine-readable codes
-- 186 automated tests, most of them calling the API over HTTP against real PostgreSQL, Redis and Kafka
+- 192 automated tests, most of them calling the API over HTTP against real PostgreSQL, Redis and Kafka
 
 ## Architecture
 
@@ -34,6 +35,8 @@ flowchart LR
     Service --> Provider["Payment provider<br/>(sandbox)"]
     Database -- outbox relay --> Kafka[("Kafka<br/>booking events")]
     Kafka --> Notifications["Notifications service<br/>ticket emails"]
+    Redis -- pub/sub, expired holds --> Stream["Live seat map<br/>server-sent events"]
+    Stream --> Client
     Controller -. errors .-> Handler["ApiExceptionHandler<br/>problem details"]
     Service -. errors .-> Handler
     Database -. constraint violations .-> Handler
@@ -49,7 +52,7 @@ src/main/java/com/antoniosifov/popcornpalace/
 ├── checkout/    # paying for a hold and turning it into a booking
 ├── booking/     # bookings and their cancellation; booking/event: what is published about them
 ├── outbox/      # transactional outbox and the relay that sends it to Kafka
-├── seatmap/     # seat map of a showtime: available, held, booked
+├── seatmap/     # seat map of a showtime (available, held, booked) and its live stream of changes
 ├── user/        # accounts
 ├── auth/        # registration, login, token issuing
 ├── security/    # who may call what, token verification
@@ -96,6 +99,7 @@ Base URL: `http://localhost:8080/api/v1`. Interactive documentation: http://loca
 | `PUT` | `/showtimes/{id}` | Replace a showtime | admin | `200` |
 | `DELETE` | `/showtimes/{id}` | Delete a showtime | admin | `204` |
 | `GET` | `/showtimes/{id}/seats` | Seat map: every seat with price and status | anyone | `200` |
+| `GET` | `/showtimes/{id}/seats/stream` | Live changes to the seat map (server-sent events) | anyone | `200` |
 | `POST` | `/showtimes/{id}/holds` | Hold seats for a few minutes | logged in | `201` |
 | `GET` | `/showtimes/{id}/holds/mine` | My current hold for this showtime | logged in | `200` |
 | `DELETE` | `/showtimes/{id}/holds/{holdId}` | Release a hold | owner | `204` |
@@ -275,6 +279,32 @@ The response is the booking: the movie, hall and start time, one ticket per seat
   ]
 }
 ```
+
+### Live seat map
+
+`GET /showtimes/{id}/seats/stream` keeps the response open and sends a `seats` event every time seats of that showtime change status (`text/event-stream`, the format browsers read with `EventSource`). The first event, `connected`, confirms the subscription; a comment line every 15 seconds keeps the connection alive. What a browser received below while another customer held two seats, released them, held one and paid for it, and a third customer's hold ran out:
+
+```text
+event:connected
+data:{"showtimeId": 1}
+
+event:seats
+data:{"showtimeId":1,"seatIds":[1,2],"status":"HELD","holdId":"46e5709e-1a1b-4534-b07e-41d5ed70d62e"}
+
+event:seats
+data:{"showtimeId":1,"seatIds":[1,2],"status":"AVAILABLE","holdId":null}
+
+event:seats
+data:{"showtimeId":1,"seatIds":[3],"status":"HELD","holdId":"1e484364-0c50-4083-be08-d6fc2bb87542"}
+
+event:seats
+data:{"showtimeId":1,"seatIds":[3],"status":"BOOKED","holdId":null}
+
+event:seats
+data:{"showtimeId":1,"seatIds":[5],"status":"AVAILABLE","holdId":null}
+```
+
+A client draws the seat map from `GET /showtimes/{id}/seats`, then applies each event to it. The `holdId` lets the customer who holds the seats recognize their own hold. A stream is closed by the server after 30 minutes and whenever the instance shuts down; the browser reconnects on its own, and should reload the seat map when it does, since changes made while it was away are not replayed. How it works is described under [Live seat map](#live-seat-map-1).
 
 ### Pagination and sorting
 
@@ -529,6 +559,36 @@ Kafka headers `eventType` and `eventId` repeat the type and id, so a consumer ca
 
 `OutboxTest` covers the round trip from a booking to a message read back from Kafka, ordering of a confirmation and its cancellation, rollback leaving no event, a Kafka outage, and four relays running at once delivering sixty events exactly once and in order.
 
+## Live seat map
+
+Two customers looking at the same hall should see each other's choices: a seat that one of them is paying for turns grey on the other's screen within a moment, and comes back when the first one walks away. Polling the seat map every second would do that at the cost of one query per browser per second; instead the API pushes changes to the browsers that are watching.
+
+```mermaid
+flowchart LR
+    H["HoldService<br/>BookingService"] -->|SeatStatusChanged<br/>after commit| R["SeatChangeRelay"]
+    R -->|PUBLISH seatmap:42| P[("Redis")]
+    P -. expired hold:{42}:seat:7 .-> L
+    P -->|SUBSCRIBE seatmap:*| L["Listener<br/>on every instance"]
+    L --> B["SeatMapBroadcaster<br/>open streams of showtime 42"]
+    B -->|event: seats| C1["browser"]
+    B -->|event: seats| C2["browser"]
+```
+
+- **Server-sent events, not WebSockets.** The data flows one way, from the server to the browser, and a browser reconnects to an event stream by itself. One HTTP GET, no handshake, no extra library on either side. `SeatMapBroadcaster` keeps the open streams of this instance per showtime and writes every change to them; a stream whose browser is gone fails on write and is dropped.
+- **Announced after the commit.** Holds, sales and cancellations publish a `SeatStatusChanged` on Spring's event bus. `SeatChangeRelay` listens with `@TransactionalEventListener(AFTER_COMMIT)`, so a browser never sees a sale whose transaction then rolled back; for holds, which live in Redis and have no transaction, the event is relayed right away.
+- **Across instances through Redis Pub/Sub.** A browser is connected to one instance of the API, and the change may have been made on another. The relay publishes every change on the Redis channel `seatmap:{showtimeId}`; every instance subscribes to `seatmap:*` and pushes what it receives to its own browsers. Kafka would be the wrong tool here: these messages are for whoever is looking right now, nobody needs them later, and a browser that missed one reloads the seat map when it reconnects. Pub/Sub costs nothing to keep and nothing to clean up.
+- **Expired holds are announced by Redis itself.** When a hold runs out nobody in the application does anything: Redis deletes the keys. With `notify-keyspace-events Ex` it also publishes each expired key on `__keyevent@0__:expired`; every instance listens, recognizes a seat key (`hold:{42}:seat:7`) and tells its browsers the seat is available. The API asks Redis for this setting at startup and logs a warning if it may not (a managed Redis that forbids `CONFIG` needs it set by its own means); `compose.yml` starts Redis with it as well.
+
+| What can go wrong | What happens |
+| --- | --- |
+| Redis is unreachable when a change is made | The change itself is safe (the booking is committed); the browsers are stale until they reload. The relay logs a warning and the request still succeeds |
+| An instance shuts down | It closes its streams; browsers reconnect, to another instance behind the load balancer, and reload the seat map |
+| A browser disappears without closing | Its next write fails (at the latest at the 15-second heartbeat) and the stream is forgotten |
+| A proxy closes idle connections | The heartbeat comment keeps them busy |
+| The stream is opened for a showtime that does not exist | `404 SHOWTIME_NOT_FOUND`, like the seat map itself |
+
+`SeatMapStreamTest` opens streams through MockMvc and checks that every change made through the API arrives in order, that an expired hold is reported without anyone in the application being involved, that a message published on the channel by "another instance" reaches this instance's browsers, that streams of other showtimes stay quiet, and that a closed browser is forgotten.
+
 ## Migrations
 
 | Version | What it does |
@@ -590,6 +650,8 @@ Windows:
 | `KAFKA_BOOTSTRAP_SERVERS` | Kafka, for publishing booking events | `localhost:29092` |
 | `OUTBOX_RELAY_INTERVAL` | How often the outbox is sent to Kafka (ISO-8601 duration) | `PT0.5S` |
 | `HOLD_TTL` | How long held seats stay reserved (ISO-8601 duration) | `PT10M` |
+| `SEATMAP_STREAM_TIMEOUT` | After how long a live seat map stream is closed (the browser reconnects) | `PT30M` |
+| `SEATMAP_HEARTBEAT_INTERVAL` | How often open streams get a keep-alive comment | `PT15S` |
 | `PAYMENT_CURRENCY` | ISO 4217 code of the currency all prices are in | `USD` |
 | `AUTH_RATE_LIMIT` | Login and registration attempts per client address per minute | `10` |
 | `JWT_SECRET` | Key that signs access tokens, at least 32 characters | empty: a random key per start, so tokens stop working after a restart |
@@ -611,6 +673,6 @@ Windows:
 .\mvnw.cmd verify
 ```
 
-Docker must be running: the API tests start disposable PostgreSQL, Redis and Kafka containers through Testcontainers and call the application over HTTP, so they exercise JSON mapping, validation, security, transactions, migrations, constraints, the Redis scripts and the outbox together. Rules that need no database (text normalization, request validation, sort allow-list) have plain unit tests.
+Docker must be running: the API tests start disposable PostgreSQL, Redis and Kafka containers through Testcontainers and call the application over HTTP, so they exercise JSON mapping, validation, security, transactions, migrations, constraints, the Redis scripts, the outbox and the live seat map together. Rules that need no database (text normalization, request validation, sort allow-list) have plain unit tests.
 
-Current suite: **186 tests passing**. The notifications service has its own suite, see its [README](../notifications/README.md).
+Current suite: **192 tests passing**. The notifications service has its own suite, see its [README](../notifications/README.md).
