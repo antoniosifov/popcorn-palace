@@ -1,29 +1,36 @@
 package com.antoniosifov.popcornpalace.showtime;
 
+import com.antoniosifov.popcornpalace.hall.SeatCategory;
+
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.EnumMap;
+import java.util.Map;
 
 public record ShowtimeResponse(
         Long id,
         Long movieId,
         String movieTitle,
-        String theater,
+        Long hallId,
+        String hallName,
         Instant startTime,
         Instant endTime,
-        BigDecimal price
+        Map<SeatCategory, BigDecimal> prices
 )
 {
-    /** Reads the movie, so call it while the showtime's movie is loaded (inside a transaction). */
+    /** Reads the movie, hall and prices, so call it inside a transaction. */
     public static ShowtimeResponse from(Showtime showtime)
     {
         return new ShowtimeResponse(
                 showtime.getId(),
                 showtime.getMovie().getId(),
                 showtime.getMovie().getTitle(),
-                showtime.getTheater(),
+                showtime.getHall().getId(),
+                showtime.getHall().getName(),
                 showtime.getStartTime(),
                 showtime.getEndTime(),
-                showtime.getPrice()
+                // A copy in enum order: detaches the response from the entity's collection.
+                new EnumMap<>(showtime.getPrices())
         );
     }
 }

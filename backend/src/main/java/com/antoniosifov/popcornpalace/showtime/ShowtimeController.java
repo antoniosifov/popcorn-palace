@@ -26,7 +26,7 @@ import java.net.URI;
 
 @RestController
 @RequestMapping("/api/v1/showtimes")
-@Tag(name = "Showtimes", description = "Screenings of a movie in a theater")
+@Tag(name = "Showtimes", description = "Screenings of a movie in a hall")
 public class ShowtimeController
 {
     private final ShowtimeService showtimeService;
@@ -37,7 +37,7 @@ public class ShowtimeController
     }
 
     @GetMapping
-    @Operation(summary = "List showtimes", description = "Paginated. Sortable by id, theater, startTime, endTime, price.")
+    @Operation(summary = "List showtimes", description = "Paginated. Sortable by id, startTime, endTime.")
     public PageResponse<ShowtimeResponse> list(
             @Parameter(description = "Only showtimes of this movie") @RequestParam(required = false) Long movieId,
             @ParameterObject @PageableDefault(size = 20, sort = "startTime") Pageable pageable)
@@ -53,7 +53,7 @@ public class ShowtimeController
     }
 
     @PostMapping
-    @Operation(summary = "Schedule a showtime", description = "Fails with 409 when it overlaps another showtime in the same theater.")
+    @Operation(summary = "Schedule a showtime", description = "Fails with 409 when it overlaps another showtime in the same hall.")
     public ResponseEntity<ShowtimeResponse> create(@Valid @RequestBody ShowtimeRequest request)
     {
         ShowtimeResponse created = showtimeService.create(request);
@@ -62,7 +62,7 @@ public class ShowtimeController
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Replace a showtime", description = "Fails with 409 when the new time overlaps another showtime in the same theater.")
+    @Operation(summary = "Replace a showtime", description = "Fails with 409 when it overlaps another showtime in the same hall, or when a showtime with bookings is moved to another hall.")
     public ShowtimeResponse update(@PathVariable Long id, @Valid @RequestBody ShowtimeRequest request)
     {
         return showtimeService.update(id, request);

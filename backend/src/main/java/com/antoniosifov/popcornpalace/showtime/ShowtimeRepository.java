@@ -12,31 +12,33 @@ import java.util.Optional;
 
 public interface ShowtimeRepository extends JpaRepository<Showtime, Long>
 {
-    // The entity graphs load each showtime together with its movie in one query,
-    // instead of one extra query per row when the response reads the movie title.
+    // The entity graphs load each showtime together with its movie and hall in
+    // one query, instead of extra queries per row when the response reads them.
 
     @Override
-    @EntityGraph(attributePaths = "movie")
+    @EntityGraph(attributePaths = {"movie", "hall"})
     Page<Showtime> findAll(Pageable pageable);
 
-    @EntityGraph(attributePaths = "movie")
+    @EntityGraph(attributePaths = {"movie", "hall"})
     Page<Showtime> findAllByMovieId(Long movieId, Pageable pageable);
 
-    @EntityGraph(attributePaths = "movie")
-    Optional<Showtime> findWithMovieById(Long id);
+    @EntityGraph(attributePaths = {"movie", "hall"})
+    Optional<Showtime> findDetailedById(Long id);
 
     /**
      * Two time ranges overlap when each one starts before the other ends.
      * Back-to-back showtimes (one ends exactly when the next starts) do not overlap.
+     * This query only produces a friendly error early; the guarantee is the
+     * exclusion constraint ex_showtimes_hall_time.
      */
     @Query("""
             select count(s) > 0
             from Showtime s
-            where s.theater = :theater
+            where s.hall.id = :hallId
               and s.startTime < :endTime
               and s.endTime > :startTime
             """)
-    boolean existsOverlapping(@Param("theater") String theater,
+    boolean existsOverlapping(@Param("hallId") Long hallId,
                               @Param("startTime") Instant startTime,
                               @Param("endTime") Instant endTime);
 
@@ -44,12 +46,12 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, Long>
     @Query("""
             select count(s) > 0
             from Showtime s
-            where s.theater = :theater
+            where s.hall.id = :hallId
               and s.startTime < :endTime
               and s.endTime > :startTime
               and s.id <> :excludedId
             """)
-    boolean existsOverlappingExcluding(@Param("theater") String theater,
+    boolean existsOverlappingExcluding(@Param("hallId") Long hallId,
                                        @Param("startTime") Instant startTime,
                                        @Param("endTime") Instant endTime,
                                        @Param("excludedId") Long excludedId);

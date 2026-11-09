@@ -1,8 +1,6 @@
 package com.antoniosifov.popcornpalace.booking;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 
@@ -14,9 +12,9 @@ public record BookingRequest(
         @NotNull @Positive
         Long showtimeId,
 
-        @Schema(example = "15")
-        @NotNull @Min(1) @Max(300)
-        Integer seatNumber,
+        @Schema(example = "42", description = "A seat id from the showtime's seat map")
+        @NotNull @Positive
+        Long seatId,
 
         @Schema(example = "84438967-f68f-4fa0-b620-0f08217e76af")
         @NotNull
