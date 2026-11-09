@@ -55,7 +55,9 @@ public class BookingController
 
     @PostMapping("/{id}/cancel")
     @Operation(summary = "Cancel a booking", description = """
-            Puts the seats back on sale and refunds the payment. Allowed for the owner and administrators             until the showtime starts. Cancelling an already cancelled booking returns it unchanged.             If the refund cannot be sent right away the payment shows REFUND_PENDING and is refunded shortly after.""")
+            Puts the seats back on sale and refunds the payment. Allowed for the owner and administrators \
+            until the showtime starts. Cancelling an already cancelled booking returns it unchanged. \
+            If the refund cannot be sent right away the payment shows REFUND_PENDING and is refunded shortly after.""")
     public BookingResponse cancel(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt)
     {
         return bookingService.cancel(id, CurrentUser.from(jwt));

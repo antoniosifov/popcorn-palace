@@ -16,7 +16,8 @@ import org.springframework.context.annotation.Configuration;
                 Movie ticket booking API: manage the movie catalog, schedule showtimes and book seats.
                 Errors are returned as RFC 9457 problem details with a machine-readable `code` field.
 
-                Browsing is public. To call the other endpoints, register or log in, then press                 **Authorize** and paste the `accessToken`.
+                Browsing is public. To call the other endpoints, register or log in, then press \
+                **Authorize** and paste the `accessToken`.
                 """,
         contact = @Contact(name = "Anton Iosifov", url = "https://antoniosifov.com")
 ))
