@@ -1,22 +1,36 @@
 # Popcorn Palace
 
+[![CI](https://github.com/antoniosifov/popcorn-palace/actions/workflows/ci.yml/badge.svg)](https://github.com/antoniosifov/popcorn-palace/actions/workflows/ci.yml)
+
 Movie ticket booking application in a single repository.
 
-- `backend/` — Java 21, Spring Boot, Spring Data JPA and PostgreSQL API.
+- `backend/` — Java 21, Spring Boot 4, Spring Data JPA and PostgreSQL API.
 - `frontend/` — existing HTML, CSS and JavaScript client; starting point for the planned Next.js + TypeScript migration.
-- `compose.yml` — local PostgreSQL database.
+- `compose.yml` — local stack: PostgreSQL and the API.
 
 ## Run locally
 
-Requirements: Java 21, Docker Compose, and Python 3 (or another static HTTP server).
+Requirement: Docker (Docker Desktop on Windows/macOS).
 
-Start PostgreSQL from the repository root:
+Start the database and the API from the repository root:
 
 ```sh
-docker compose up -d
+docker compose up --build
 ```
 
-Start the API in another terminal:
+The API listens on http://localhost:8080.
+
+### Run the API from your IDE instead
+
+Requirements: Java 21 and Docker.
+
+Start only the database:
+
+```sh
+docker compose up -d db
+```
+
+Then start the API:
 
 ```powershell
 cd backend
@@ -24,9 +38,13 @@ cd backend
 ```
 
 On macOS/Linux, use `./mvnw spring-boot:run` from `backend/`.
-The API listens on http://localhost:8080.
 
-Serve the frontend from the repository root:
+Connection settings come from the `DB_URL`, `DB_USERNAME` and `DB_PASSWORD`
+environment variables and default to the local compose database.
+
+### Frontend
+
+Serve the frontend from the repository root (Python 3 or any static HTTP server):
 
 ```sh
 python -m http.server 5500 --directory frontend
@@ -39,11 +57,12 @@ see [frontend configuration](frontend/README.md#api-configuration) for overrides
 
 ```powershell
 cd backend
-.\mvnw.cmd test
+.\mvnw.cmd verify
 ```
 
-On macOS/Linux, use `./mvnw test` from `backend/`.
-Tests use H2 and do not require a running PostgreSQL instance.
+On macOS/Linux, use `./mvnw verify` from `backend/`.
+Tests start a disposable PostgreSQL container through Testcontainers, so Docker
+must be running. The same command runs in CI on every pull request.
 
 ## Component documentation
 

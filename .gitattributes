@@ -1,0 +1,14 @@
+# Keep line endings consistent across Windows, macOS, Linux and Docker builds.
+* text=auto
+
+# Shell scripts must stay LF or they fail inside Linux containers and CI.
+mvnw text eol=lf
+*.sh text eol=lf
+
+# Windows scripts must stay CRLF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+*.webp binary
+*.png binary
+*.jpg binary
