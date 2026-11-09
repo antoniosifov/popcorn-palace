@@ -18,26 +18,35 @@ final class ConstraintErrors
     {
     }
 
-    private static final Map<String, ConstraintError> BY_CONSTRAINT = Map.of(
-            "uq_users_email",
-            new ConstraintError(ErrorCode.EMAIL_TAKEN, "An account with this email already exists"),
-            "uq_movies_title",
-            new ConstraintError(ErrorCode.MOVIE_TITLE_TAKEN, "A movie with this title already exists"),
-            "fk_showtimes_movie",
-            new ConstraintError(ErrorCode.MOVIE_HAS_SHOWTIMES, "The movie has scheduled showtimes and cannot be deleted"),
-            "uq_halls_name",
-            new ConstraintError(ErrorCode.HALL_NAME_TAKEN, "A hall with this name already exists"),
-            "fk_showtimes_hall",
-            new ConstraintError(ErrorCode.HALL_HAS_SHOWTIMES, "The hall has scheduled showtimes and cannot be deleted"),
-            "ex_showtimes_hall_time",
-            new ConstraintError(ErrorCode.SHOWTIME_OVERLAP, "Another showtime is already scheduled in this hall during this time"),
-            "fk_bookings_showtime",
-            new ConstraintError(ErrorCode.SHOWTIME_HAS_BOOKINGS, "The showtime has bookings; it cannot be deleted or moved to another hall"),
-            "fk_booking_seats_showtime",
-            new ConstraintError(ErrorCode.SHOWTIME_HAS_BOOKINGS, "The showtime has bookings; it cannot be deleted or moved to another hall"),
-            "uq_booking_seats_showtime_seat",
-            new ConstraintError(ErrorCode.SEAT_ALREADY_BOOKED, "One of the seats is already booked for this showtime")
+    private static final Map<String, ConstraintError> BY_CONSTRAINT = Map.ofEntries(
+            entry("uq_users_email", ErrorCode.EMAIL_TAKEN,
+                    "An account with this email already exists"),
+            entry("uq_movies_title", ErrorCode.MOVIE_TITLE_TAKEN,
+                    "A movie with this title already exists"),
+            entry("fk_showtimes_movie", ErrorCode.MOVIE_HAS_SHOWTIMES,
+                    "The movie has scheduled showtimes and cannot be deleted"),
+            entry("uq_halls_name", ErrorCode.HALL_NAME_TAKEN,
+                    "A hall with this name already exists"),
+            entry("fk_showtimes_hall", ErrorCode.HALL_HAS_SHOWTIMES,
+                    "The hall has scheduled showtimes and cannot be deleted"),
+            entry("ex_showtimes_hall_time", ErrorCode.SHOWTIME_OVERLAP,
+                    "Another showtime is already scheduled in this hall during this time"),
+            entry("fk_bookings_showtime", ErrorCode.SHOWTIME_HAS_BOOKINGS,
+                    "The showtime has bookings; it cannot be deleted or moved to another hall"),
+            entry("fk_booking_seats_showtime", ErrorCode.SHOWTIME_HAS_BOOKINGS,
+                    "The showtime has bookings; it cannot be deleted or moved to another hall"),
+            entry("uq_booking_seats_showtime_seat", ErrorCode.SEAT_ALREADY_BOOKED,
+                    "One of the seats is already booked for this showtime"),
+            entry("uq_payments_user_idempotency_key", ErrorCode.PAYMENT_IN_PROGRESS,
+                    "A payment with this Idempotency-Key is already being processed"),
+            entry("uq_bookings_payment", ErrorCode.PAYMENT_IN_PROGRESS,
+                    "A booking for this payment is already being created")
     );
+
+    private static Map.Entry<String, ConstraintError> entry(String constraint, ErrorCode code, String message)
+    {
+        return Map.entry(constraint, new ConstraintError(code, message));
+    }
 
     private ConstraintErrors()
     {

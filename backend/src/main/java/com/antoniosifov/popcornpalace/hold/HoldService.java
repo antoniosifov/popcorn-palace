@@ -1,8 +1,6 @@
 package com.antoniosifov.popcornpalace.hold;
 
 import com.antoniosifov.popcornpalace.booking.BookingRepository;
-import com.antoniosifov.popcornpalace.booking.BookingResponse;
-import com.antoniosifov.popcornpalace.booking.BookingService;
 import com.antoniosifov.popcornpalace.common.error.ApiException;
 import com.antoniosifov.popcornpalace.common.error.ErrorCode;
 import com.antoniosifov.popcornpalace.hall.Seat;
@@ -12,10 +10,7 @@ import com.antoniosifov.popcornpalace.hold.SeatHoldStore.AcquireResult;
 import com.antoniosifov.popcornpalace.security.CurrentUser;
 import com.antoniosifov.popcornpalace.showtime.Showtime;
 import com.antoniosifov.popcornpalace.showtime.ShowtimeRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,16 +20,14 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
 /**
- * The checkout flow: a customer picks seats, they are held for a few minutes,
- * and the hold is then either confirmed into a booking or released (by the
- * customer, or by expiring).
+ * Holding seats: a customer picks seats and they are reserved for a few
+ * minutes. The hold is then either paid for and turned into a booking (see
+ * the checkout package) or released, by the customer or by expiring.
  *
  * <p>Holds exist only in Redis; sold seats exist only in PostgreSQL. Redis
  * keeps other customers off the seats while one of them is checking out.
@@ -45,25 +38,20 @@ import java.util.UUID;
 @EnableConfigurationProperties(HoldProperties.class)
 public class HoldService
 {
-    private static final Logger log = LoggerFactory.getLogger(HoldService.class);
-
     private final SeatHoldStore holdStore;
     private final ShowtimeRepository showtimeRepository;
     private final SeatRepository seatRepository;
     private final BookingRepository bookingRepository;
-    private final BookingService bookingService;
     private final HoldProperties properties;
     private final Clock clock;
 
     public HoldService(SeatHoldStore holdStore, ShowtimeRepository showtimeRepository, SeatRepository seatRepository,
-                       BookingRepository bookingRepository, BookingService bookingService,
-                       HoldProperties properties, Clock clock)
+                       BookingRepository bookingRepository, HoldProperties properties, Clock clock)
     {
         this.holdStore = holdStore;
         this.showtimeRepository = showtimeRepository;
         this.seatRepository = seatRepository;
         this.bookingRepository = bookingRepository;
-        this.bookingService = bookingService;
         this.properties = properties;
         this.clock = clock;
     }
@@ -138,39 +126,6 @@ public class HoldService
             }
             holdStore.release(hold);
         });
-    }
-
-    /**
-     * Turns a hold into a booking. Deliberately not transactional as a whole:
-     * the database transaction (inside BookingService) must be committed
-     * before the seats are released in Redis. In the opposite order another
-     * customer could take a seat between the release and the commit.
-     */
-    public BookingResponse confirm(Long showtimeId, UUID holdId, CurrentUser user)
-    {
-        HoldRecord hold = holdStore.find(showtimeId, holdId)
-                .filter(found -> found.userId().equals(user.id()))
-                .orElseThrow(() -> notFound());
-
-        // Make sure the hold cannot expire while the booking is being written.
-        if (!holdStore.keepAlive(hold, properties.confirmGrace())) {
-            throw notFound();
-        }
-
-        Map<Long, BigDecimal> pricesBySeat = new LinkedHashMap<>();
-        hold.seats().forEach(seat -> pricesBySeat.put(seat.seatId(), seat.price()));
-        BookingResponse booking = bookingService.create(user.id(), showtimeId, pricesBySeat);
-
-        try {
-            holdStore.release(hold);
-        }
-        catch (DataAccessException exception) {
-            // The booking is committed, so this is not an error for the customer.
-            // The leftover keys expire on their own, and the seat map reads sold
-            // seats from the database, so nothing wrong is ever shown.
-            log.warn("Booking {} is saved, but hold {} could not be released; it will expire", booking.id(), hold.id(), exception);
-        }
-        return booking;
     }
 
     /** Loads the requested seats and checks that each exists and is in the showtime's hall. */

@@ -14,14 +14,15 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
 /**
- * Reading bookings. A booking is created by confirming a hold
- * (see the checkout endpoints), never directly.
+ * Reading and cancelling bookings. A booking is created by paying for a
+ * hold (see the checkout endpoints), never directly.
  */
 @RestController
 @RequestMapping("/api/v1/bookings")
@@ -50,5 +51,13 @@ public class BookingController
     public BookingResponse get(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt)
     {
         return bookingService.get(id, CurrentUser.from(jwt));
+    }
+
+    @PostMapping("/{id}/cancel")
+    @Operation(summary = "Cancel a booking", description = """
+            Puts the seats back on sale and refunds the payment. Allowed for the owner and administrators             until the showtime starts. Cancelling an already cancelled booking returns it unchanged.             If the refund cannot be sent right away the payment shows REFUND_PENDING and is refunded shortly after.""")
+    public BookingResponse cancel(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt)
+    {
+        return bookingService.cancel(id, CurrentUser.from(jwt));
     }
 }

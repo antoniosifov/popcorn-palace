@@ -2,6 +2,8 @@ package com.antoniosifov.popcornpalace.booking;
 
 import com.antoniosifov.popcornpalace.hall.Seat;
 import com.antoniosifov.popcornpalace.hall.SeatCategory;
+import com.antoniosifov.popcornpalace.payment.Payment;
+import com.antoniosifov.popcornpalace.payment.PaymentStatus;
 import com.antoniosifov.popcornpalace.showtime.Showtime;
 
 import java.math.BigDecimal;
@@ -10,24 +12,32 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
-/** An order with its tickets: the showtime, each seat with the price paid, and the total. */
+/** An order with its tickets: the showtime, each seat with the price paid, the total and the payment. */
 public record BookingResponse(
         UUID id,
+        BookingStatus status,
         Long showtimeId,
         String movieTitle,
         String hallName,
         Instant startTime,
         List<Ticket> seats,
         BigDecimal totalPrice,
+        PaymentSummary payment,
         UUID userId,
-        Instant createdAt
+        Instant createdAt,
+        Instant cancelledAt
 )
 {
     public record Ticket(Long seatId, int row, int seatNumber, SeatCategory category, BigDecimal price)
     {
     }
 
-    /** Reads the seats, showtime, movie and hall, so call it while they can be loaded (inside a transaction). */
+    /** @param status SUCCEEDED for a paid booking; REFUND_PENDING, then REFUNDED, after a cancellation */
+    public record PaymentSummary(UUID id, PaymentStatus status, BigDecimal amount, String currency)
+    {
+    }
+
+    /** Reads the seats, showtime, movie, hall and payment, so call it while they can be loaded (inside a transaction). */
     public static BookingResponse from(Booking booking)
     {
         Showtime showtime = booking.getShowtime();
@@ -35,16 +45,21 @@ public record BookingResponse(
                 .map(BookingResponse::ticket)
                 .sorted(Comparator.comparingInt(Ticket::row).thenComparingInt(Ticket::seatNumber))
                 .toList();
+        Payment payment = booking.getPayment();
         return new BookingResponse(
                 booking.getId(),
+                booking.getStatus(),
                 showtime.getId(),
                 showtime.getMovie().getTitle(),
                 showtime.getHall().getName(),
                 showtime.getStartTime(),
                 tickets,
                 booking.getTotalPrice(),
+                payment == null ? null
+                        : new PaymentSummary(payment.getId(), payment.getStatus(), payment.getAmount(), payment.getCurrency()),
                 booking.getUserId(),
-                booking.getCreatedAt()
+                booking.getCreatedAt(),
+                booking.getCancelledAt()
         );
     }
 

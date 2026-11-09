@@ -1,6 +1,5 @@
 package com.antoniosifov.popcornpalace.hold;
 
-import com.antoniosifov.popcornpalace.booking.BookingResponse;
 import com.antoniosifov.popcornpalace.common.config.OpenApiConfig;
 import com.antoniosifov.popcornpalace.security.CurrentUser;
 import io.swagger.v3.oas.annotations.Operation;
@@ -8,7 +7,6 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -19,14 +17,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
-import java.net.URI;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/showtimes/{showtimeId}/holds")
-@Tag(name = "Checkout", description = "Hold seats while checking out, then confirm the hold into a booking")
+@Tag(name = "Checkout", description = "Hold seats, then pay for the hold to turn it into a booking")
 @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class HoldController
 {
@@ -62,18 +58,5 @@ public class HoldController
     public void release(@PathVariable Long showtimeId, @PathVariable UUID holdId, @AuthenticationPrincipal Jwt jwt)
     {
         holdService.release(showtimeId, holdId, CurrentUser.from(jwt));
-    }
-
-    @PostMapping("/{holdId}/confirm")
-    @Operation(summary = "Confirm a hold into a booking", description = """
-            Creates the booking for the held seats at the prices shown when they were held. \
-            Fails with 404 when the hold has expired.""")
-    public ResponseEntity<BookingResponse> confirm(@PathVariable Long showtimeId, @PathVariable UUID holdId,
-                                                   @AuthenticationPrincipal Jwt jwt)
-    {
-        BookingResponse booking = holdService.confirm(showtimeId, holdId, CurrentUser.from(jwt));
-        URI location = ServletUriComponentsBuilder.fromCurrentContextPath()
-                .path("/api/v1/bookings/{id}").build(booking.id());
-        return ResponseEntity.created(location).body(booking);
     }
 }
