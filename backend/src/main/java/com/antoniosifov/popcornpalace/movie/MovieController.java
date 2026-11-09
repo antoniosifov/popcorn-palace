@@ -1,7 +1,9 @@
 package com.antoniosifov.popcornpalace.movie;
 
 import com.antoniosifov.popcornpalace.common.web.PageResponse;
+import com.antoniosifov.popcornpalace.common.config.OpenApiConfig;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springdoc.core.annotations.ParameterObject;
@@ -49,6 +51,7 @@ public class MovieController
     }
 
     @PostMapping
+    @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
     @Operation(summary = "Add a movie")
     public ResponseEntity<MovieResponse> create(@Valid @RequestBody MovieRequest request)
     {
@@ -58,6 +61,7 @@ public class MovieController
     }
 
     @PutMapping("/{id}")
+    @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
     @Operation(summary = "Replace a movie")
     public MovieResponse update(@PathVariable Long id, @Valid @RequestBody MovieRequest request)
     {
@@ -66,6 +70,7 @@ public class MovieController
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
     @Operation(summary = "Delete a movie", description = "Fails with 409 while the movie still has showtimes.")
     public void delete(@PathVariable Long id)
     {

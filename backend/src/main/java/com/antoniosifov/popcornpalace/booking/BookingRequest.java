@@ -4,9 +4,10 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 
-import java.util.UUID;
-
-/** Body of the create booking request. */
+/**
+ * Body of the create booking request. It does not say who is booking:
+ * that comes from the access token, so one user cannot book as another.
+ */
 public record BookingRequest(
         @Schema(example = "1")
         @NotNull @Positive
@@ -14,11 +15,7 @@ public record BookingRequest(
 
         @Schema(example = "42", description = "A seat id from the showtime's seat map")
         @NotNull @Positive
-        Long seatId,
-
-        @Schema(example = "84438967-f68f-4fa0-b620-0f08217e76af")
-        @NotNull
-        UUID userId
+        Long seatId
 )
 {
 }

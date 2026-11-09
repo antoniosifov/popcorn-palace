@@ -10,6 +10,9 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -49,6 +52,29 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler
     ProblemDetail handleApiException(ApiException exception)
     {
         return problem(exception.getStatus(), exception.getCode().name(), exception.getMessage());
+    }
+
+    /**
+     * The request carries no usable credentials: no token, or one that is
+     * malformed, wrongly signed or expired. Spring Security raises this in its
+     * filter chain and hands it over through ProblemSecurityHandlers.
+     */
+    @ExceptionHandler(AuthenticationException.class)
+    ResponseEntity<ProblemDetail> handleAuthentication(AuthenticationException exception)
+    {
+        String detail = exception instanceof InvalidBearerTokenException
+                ? "The access token is invalid or has expired"
+                : "Authentication is required to access this resource";
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .header(HttpHeaders.WWW_AUTHENTICATE, "Bearer")
+                .body(problem(HttpStatus.UNAUTHORIZED, ErrorCode.UNAUTHENTICATED.name(), detail));
+    }
+
+    /** The caller is known, but the account's role does not allow this action. */
+    @ExceptionHandler(AccessDeniedException.class)
+    ProblemDetail handleAccessDenied(AccessDeniedException exception)
+    {
+        return problem(HttpStatus.FORBIDDEN, ErrorCode.FORBIDDEN.name(), "You do not have permission to perform this action");
     }
 
     /**

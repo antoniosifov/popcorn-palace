@@ -2,10 +2,14 @@ package com.antoniosifov.popcornpalace.booking;
 
 import com.antoniosifov.popcornpalace.common.error.ApiException;
 import com.antoniosifov.popcornpalace.common.error.ErrorCode;
+import com.antoniosifov.popcornpalace.common.web.PageResponse;
+import com.antoniosifov.popcornpalace.common.web.SortFields;
 import com.antoniosifov.popcornpalace.hall.Seat;
 import com.antoniosifov.popcornpalace.hall.SeatRepository;
+import com.antoniosifov.popcornpalace.security.CurrentUser;
 import com.antoniosifov.popcornpalace.showtime.Showtime;
 import com.antoniosifov.popcornpalace.showtime.ShowtimeRepository;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,12 +17,15 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
 @Transactional(readOnly = true)
 public class BookingService
 {
+    private static final Set<String> SORTABLE_FIELDS = Set.of("createdAt", "price");
+
     private final BookingRepository bookingRepository;
     private final ShowtimeRepository showtimeRepository;
     private final SeatRepository seatRepository;
@@ -33,24 +40,36 @@ public class BookingService
         this.clock = clock;
     }
 
-    public BookingResponse get(UUID id)
+    /** The caller's own bookings. */
+    public PageResponse<BookingResponse> listOwn(CurrentUser user, Pageable pageable)
     {
-        return bookingRepository.findWithSeatById(id)
+        SortFields.requireAllowed(pageable, SORTABLE_FIELDS);
+        return PageResponse.from(bookingRepository.findAllByUserId(user.id(), pageable).map(BookingResponse::from));
+    }
+
+    /**
+     * A booking is visible to its owner and to administrators. For anyone else
+     * it "does not exist": answering 403 instead would confirm that the id is real.
+     */
+    public BookingResponse get(UUID id, CurrentUser user)
+    {
+        return bookingRepository.findDetailedById(id)
+                .filter(booking -> user.isAdmin() || booking.getUserId().equals(user.id()))
                 .map(BookingResponse::from)
                 .orElseThrow(() -> ApiException.notFound(ErrorCode.BOOKING_NOT_FOUND, "Booking %s was not found".formatted(id)));
     }
 
     @Transactional
-    public BookingResponse create(BookingRequest request)
+    public BookingResponse create(BookingRequest request, CurrentUser user)
     {
-        Showtime showtime = showtimeRepository.findById(request.showtimeId())
+        Showtime showtime = showtimeRepository.findDetailedById(request.showtimeId())
                 .orElseThrow(() -> ApiException.notFound(ErrorCode.SHOWTIME_NOT_FOUND,
                         "Showtime %d was not found".formatted(request.showtimeId())));
         Seat seat = seatRepository.findById(request.seatId())
                 .orElseThrow(() -> ApiException.notFound(ErrorCode.SEAT_NOT_FOUND,
                         "Seat %d was not found".formatted(request.seatId())));
 
-        // Comparing ids only: neither hall is loaded from the database.
+        // Comparing ids only: the seat's hall is not loaded from the database.
         if (!seat.getHall().getId().equals(showtime.getHall().getId())) {
             throw ApiException.badRequest(ErrorCode.SEAT_NOT_IN_HALL,
                     "Seat %d is not in the hall of showtime %d".formatted(seat.getId(), showtime.getId()));
@@ -81,7 +100,7 @@ public class BookingService
         // seat as free. The unique constraint uq_bookings_showtime_seat is what
         // guarantees a single winner; the loser's insert fails here and is
         // reported as the same SEAT_ALREADY_BOOKED conflict.
-        Booking booking = new Booking(showtime, seat, request.userId(), price, now);
+        Booking booking = new Booking(showtime, seat, user.id(), price, now);
         return BookingResponse.from(bookingRepository.saveAndFlush(booking));
     }
 }
