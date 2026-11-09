@@ -2,7 +2,7 @@
 
 A movie ticket booking backend built with Java and Spring Boot. The API manages movies, schedules theater showtimes, and creates seat bookings while enforcing validation, schedule-conflict, and duplicate-seat rules.
 
-[Companion frontend](https://github.com/antoniosifov/popcorn-palace-frontend) · [Portfolio](https://antoniosifov.com) · [LinkedIn](https://www.linkedin.com/in/anton-iosifov/)
+[Frontend](../frontend/README.md) · [Portfolio](https://antoniosifov.com) · [LinkedIn](https://www.linkedin.com/in/anton-iosifov/)
 
 ## Highlights
 
@@ -146,10 +146,10 @@ cd popcorn-palace
 ### 2. Start PostgreSQL
 
 ```bash
-docker compose up -d
+docker compose -f ../compose.yml up -d
 ```
 
-The compose file creates a local database named `popcorn-palace` on port `5432` using the development credentials configured in `application.yaml`.
+The compose file creates a local database named `popcorn-palace` on port `5432` using the development credentials configured in `src/main/resources/application.yaml`.
 
 ### 3. Start the API
 
@@ -202,4 +202,4 @@ src/
 
 ## Related repository
 
-The separate React client is available at [antoniosifov/popcorn-palace-frontend](https://github.com/antoniosifov/popcorn-palace-frontend).
+The browser client lives in [frontend/](../frontend/README.md) in this repository.

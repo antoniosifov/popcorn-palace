@@ -1,6 +1,6 @@
 # Popcorn Palace Frontend
 
-A responsive browser interface for managing the Popcorn Palace movie catalog, showtimes, and seat bookings. It connects to the companion [Spring Boot REST API](https://github.com/antoniosifov/popcorn-palace) and provides a complete UI for the assignment's core workflows.
+A responsive browser interface for managing the Popcorn Palace movie catalog, showtimes, and seat bookings. It connects to the companion [Spring Boot REST API](../backend/README.md) and provides a complete UI for the assignment's core workflows.
 
 ## Features
 
@@ -23,13 +23,14 @@ A responsive browser interface for managing the Popcorn Palace movie catalog, sh
 
 ### 1. Start the backend
 
-Follow the setup instructions in [popcorn-palace](https://github.com/antoniosifov/popcorn-palace). The frontend expects the API at `http://localhost:8080` by default.
+Follow the setup instructions in [the root README](../README.md). The frontend expects the API at `http://localhost:8080` by default.
 
 ### 2. Serve the frontend
 
-Clone this repository and start any static file server from its root. For example:
+From the monorepo root, enter `frontend/` and start a static file server. For example:
 
 ```bash
+cd frontend
 python -m http.server 5500
 ```
 
