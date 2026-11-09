@@ -48,7 +48,7 @@ class BookingApiTest extends ApiIntegrationTest
         showtimeId = createShowtime(movieId, hallId, START, END);
     }
 
-    @DisplayName("A confirmed hold becomes a booking with one ticket per seat and the total")
+    @DisplayName("A paid hold becomes a booking with one ticket per seat, the total and the payment")
     @Test
     void confirmedHoldBecomesBookingWithTickets() throws Exception
     {
@@ -59,6 +59,8 @@ class BookingApiTest extends ApiIntegrationTest
         MvcResult result = confirm(customerToken, showtimeId, holdId)
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").isString())
+                .andExpect(jsonPath("$.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.cancelledAt").doesNotExist())
                 .andExpect(jsonPath("$.showtimeId").value(showtimeId))
                 .andExpect(jsonPath("$.movieTitle").value("Interstellar"))
                 .andExpect(jsonPath("$.hallName").value("Hall 1"))
@@ -74,6 +76,10 @@ class BookingApiTest extends ApiIntegrationTest
                 .andExpect(jsonPath("$.seats[1].category").value("VIP"))
                 .andExpect(jsonPath("$.seats[1].price").value(22.0))
                 .andExpect(jsonPath("$.totalPrice").value(36.5))
+                .andExpect(jsonPath("$.payment.id").isString())
+                .andExpect(jsonPath("$.payment.status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.payment.amount").value(36.5))
+                .andExpect(jsonPath("$.payment.currency").value("USD"))
                 .andExpect(jsonPath("$.userId").value(CUSTOMER_ID.toString()))
                 .andExpect(jsonPath("$.createdAt").isString())
                 .andReturn();

@@ -25,7 +25,8 @@ Browsing is public. To manage the catalog, log in at `POST /api/v1/auth/login` a
 development administrator (`admin@popcorn.local` / `admin-dev-password`), press
 **Authorize** in Swagger UI and paste the `accessToken`. To book seats, register a
 customer at `POST /api/v1/auth/register`, hold seats from a showtime's seat map and
-confirm the hold.
+pay for the hold with the sandbox token `tok_visa` (the request needs an
+`Idempotency-Key` header with any unique value).
 
 If port 8080, 5432 or 6379 is taken, copy `.env.example` to `.env` and change the ports.
 

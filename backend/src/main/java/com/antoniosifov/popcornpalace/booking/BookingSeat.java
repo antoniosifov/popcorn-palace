@@ -36,7 +36,7 @@ public class BookingSeat
     private Seat seat;
 
     // Copies of the booking's showtime and hall. They exist for the database:
-    // the unique constraint (showtime_id, seat_id) is what prevents selling a
+    // the unique index on (showtime_id, seat_id) is what prevents selling a
     // seat twice, and the composite foreign keys tie seat, showtime and hall together.
 
     @Column(name = "showtime_id", nullable = false, updatable = false)
@@ -49,6 +49,13 @@ public class BookingSeat
     @Column(nullable = false, updatable = false, precision = 10, scale = 2)
     private BigDecimal price;
 
+    /**
+     * False once the booking is cancelled. The unique index covers only active
+     * rows, so a released seat can be sold again while this row stays as history.
+     */
+    @Column(nullable = false)
+    private boolean active;
+
     BookingSeat(Booking booking, Seat seat, BigDecimal price)
     {
         this.booking = booking;
@@ -56,5 +63,11 @@ public class BookingSeat
         this.showtimeId = booking.getShowtime().getId();
         this.hallId = booking.getHallId();
         this.price = price;
+        this.active = true;
+    }
+
+    void release()
+    {
+        this.active = false;
     }
 }

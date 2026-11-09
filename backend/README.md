@@ -1,6 +1,6 @@
 # Popcorn Palace API
 
-A movie ticket booking backend built with Java 21 and Spring Boot 4. It manages a movie catalog, halls with real seat layouts and showtimes with per-category prices, and lets registered users hold seats while they check out and then book them. Its rules stay intact when requests race each other.
+A movie ticket booking backend built with Java 21 and Spring Boot 4. It manages a movie catalog, halls with real seat layouts and showtimes with per-category prices, and lets registered users hold seats while they check out, pay for them and cancel later. Its rules stay intact when requests race each other.
 
 [Frontend](../frontend/README.md) · [Portfolio](https://antoniosifov.com) · [LinkedIn](https://www.linkedin.com/in/anton-iosifov/)
 
@@ -10,12 +10,14 @@ A movie ticket booking backend built with Java 21 and Spring Boot 4. It manages 
 - Halls with row-by-row seat layouts, and a seat map per showtime with prices and availability
 - Accounts with stateless JWT authentication and two roles: customers book, administrators manage the catalog
 - Checkout with temporary seat holds in Redis (atomic Lua scripts, automatic expiry) confirmed into bookings in PostgreSQL
+- Payments that are safe to retry: idempotency keys, a refund if the booking fails after the charge, and a job that settles payments left unfinished
+- Cancellation with refund; the seats go back on sale while the booking stays on record
 - Login and registration throttled per client address
 - Interactive API documentation generated from the code (Swagger UI, OpenAPI 3.1)
 - Database schema owned by Flyway migrations that carry existing data forward; Hibernate only validates it
 - Business rules enforced by database constraints, so they hold under concurrency
 - Uniform error responses in the RFC 9457 "problem details" format with machine-readable codes
-- 150 automated tests, most of them calling the API over HTTP against a real PostgreSQL and Redis
+- 181 automated tests, most of them calling the API over HTTP against a real PostgreSQL and Redis
 
 ## Architecture
 
@@ -27,7 +29,8 @@ flowchart LR
     Controller --> Service["Services<br/>business rules, transactions"]
     Service --> Repository["Spring Data JPA repositories"]
     Repository --> Database[("PostgreSQL<br/>constraints + Flyway schema")]
-    Service --> Redis[("Redis<br/>seat holds, rate limits")]
+    Service --> Redis[("Redis<br/>seat holds, locks, rate limits")]
+    Service --> Provider["Payment provider<br/>(sandbox)"]
     Controller -. errors .-> Handler["ApiExceptionHandler<br/>problem details"]
     Service -. errors .-> Handler
     Database -. constraint violations .-> Handler
@@ -38,8 +41,10 @@ src/main/java/com/antoniosifov/popcornpalace/
 ├── movie/       # catalog
 ├── hall/        # halls and their seats
 ├── showtime/    # scheduling, prices per seat category
-├── hold/        # temporary seat holds in Redis, checkout
-├── booking/     # confirmed bookings
+├── hold/        # temporary seat holds in Redis
+├── payment/     # payments, the provider interface and its sandbox, reconciliation
+├── checkout/    # paying for a hold and turning it into a booking
+├── booking/     # bookings and their cancellation
 ├── seatmap/     # seat map of a showtime: available, held, booked
 ├── user/        # accounts
 ├── auth/        # registration, login, token issuing
@@ -48,7 +53,7 @@ src/main/java/com/antoniosifov/popcornpalace/
 src/main/resources/db/migration/   # Flyway SQL migrations
 ```
 
-Packages depend on each other in one direction only: `seatmap` → `hold` → `booking` → `showtime` → `hall`, `movie`.
+Packages depend on each other in one direction only: `checkout` → `hold` → `booking` → `payment`, and `booking` → `showtime` → `hall`, `movie`.
 
 ## Technology
 
@@ -89,9 +94,10 @@ Base URL: `http://localhost:8080/api/v1`. Interactive documentation: http://loca
 | `POST` | `/showtimes/{id}/holds` | Hold seats for a few minutes | logged in | `201` |
 | `GET` | `/showtimes/{id}/holds/mine` | My current hold for this showtime | logged in | `200` |
 | `DELETE` | `/showtimes/{id}/holds/{holdId}` | Release a hold | owner | `204` |
-| `POST` | `/showtimes/{id}/holds/{holdId}/confirm` | Turn a hold into a booking | owner | `201` + `Location` |
+| `POST` | `/showtimes/{id}/holds/{holdId}/confirm` | Pay for a hold and turn it into a booking (needs `Idempotency-Key`) | owner | `201` + `Location` |
 | `GET` | `/bookings` | List my bookings (paginated, newest first) | logged in | `200` |
 | `GET` | `/bookings/{id}` | Get a booking | owner or admin | `200` |
+| `POST` | `/bookings/{id}/cancel` | Cancel a booking and refund it | owner or admin | `200` |
 
 ### Authentication and roles
 
@@ -196,11 +202,35 @@ Hold. The seat ids come from the showtime's seat map; the user comes from the ac
 }
 ```
 
-Confirming the hold (`POST .../holds/{holdId}/confirm`, no body) returns the booking: the movie, hall and start time, one ticket per seat and the total. Prices are copies of what the customer was shown when the seats were held, so later price changes do not rewrite them:
+Paying for the hold. The request needs an `Idempotency-Key` header and a payment token:
+
+```text
+POST /api/v1/showtimes/1/holds/711c015e-6ea7-4222-bb31-87e2188ca53e/confirm
+Idempotency-Key: 3f1c2b9e-7d4a-4c1e-9b0a-2f6d8e5c1a77
+```
+
+```json
+{
+  "paymentToken": "tok_visa"
+}
+```
+
+The token stands in for a card; card numbers are never sent to this API. The payment provider is a sandbox, and the token decides the outcome:
+
+| Token | Outcome |
+| --- | --- |
+| `tok_visa` | charged |
+| `tok_slow` | charged after a delay |
+| `tok_declined` | declined: insufficient funds |
+| `tok_expired` | declined: expired card |
+| `tok_error` | the provider fails |
+
+The response is the booking: the movie, hall and start time, one ticket per seat, the total and the payment. Prices are copies of what the customer was shown when the seats were held, so later price changes do not rewrite them:
 
 ```json
 {
   "id": "860324e2-4308-4888-9252-9c1b1805972a",
+  "status": "CONFIRMED",
   "showtimeId": 1,
   "movieTitle": "Interstellar",
   "hallName": "Hall 1",
@@ -210,8 +240,10 @@ Confirming the hold (`POST .../holds/{holdId}/confirm`, no body) returns the boo
     { "seatId": 101, "row": 9, "seatNumber": 5, "category": "VIP", "price": 22.00 }
   ],
   "totalPrice": 44.00,
+  "payment": { "id": "5b0f6f0e-3d1c-4b53-9a57-0d1b5a1c2e90", "status": "SUCCEEDED", "amount": 44.00, "currency": "USD" },
   "userId": "85df2e82-eb22-4966-8885-8234a8556154",
-  "createdAt": "2030-01-10T12:03:00.000Z"
+  "createdAt": "2030-01-10T12:03:00.000Z",
+  "cancelledAt": null
 }
 ```
 
@@ -297,12 +329,14 @@ Validation failures list every rejected field:
 | `400` | `VALIDATION_FAILED` | A request field is missing or invalid |
 | `400` | `MALFORMED_REQUEST` | The body is missing or is not valid JSON |
 | `400` | `INVALID_SORT` | Sorting by a field outside the allow-list |
+| `400` | `IDEMPOTENCY_KEY_REQUIRED` | Paying without a valid `Idempotency-Key` header |
 | `400` | `HALL_TOO_LARGE` | A hall layout over 60 rows or 1000 seats |
 | `400` | `SHOWTIME_PRICE_MISSING` | No price for a seat category the hall uses |
 | `400` | `SEAT_NOT_IN_HALL` | Holding a seat that is not in the showtime's hall |
 | `400` | `TOO_MANY_SEATS` | Holding more than eight seats at once |
 | `401` | `UNAUTHENTICATED` | No access token, or one that is invalid or expired (with a `WWW-Authenticate: Bearer` header) |
 | `401` | `INVALID_CREDENTIALS` | Login with an unknown email or a wrong password |
+| `402` | `PAYMENT_DECLINED` | The card was declined (reason in `declineCode`); the seats stay held |
 | `403` | `FORBIDDEN` | The account's role does not allow the action |
 | `404` | `MOVIE_NOT_FOUND`, `HALL_NOT_FOUND`, `SHOWTIME_NOT_FOUND`, `SEAT_NOT_FOUND`, `BOOKING_NOT_FOUND` | The resource does not exist |
 | `404` | `HOLD_NOT_FOUND` | The hold does not exist, has expired, or belongs to someone else |
@@ -314,7 +348,12 @@ Validation failures list every rejected field:
 | `409` | `SEAT_ALREADY_HELD` | A requested seat is held by another customer |
 | `409` | `SEAT_ALREADY_BOOKED` | A requested seat is already booked for this showtime |
 | `409` | `HOLD_ALREADY_EXISTS` | The user already has a hold for this showtime (its id is in `holdId`) |
+| `409` | `PAYMENT_IN_PROGRESS` | Another request is paying for the same hold, or the same key is still being processed |
+| `409` | `PAYMENT_REFUNDED` | Repeating a request whose charge was refunded because the booking could not be saved |
+| `409` | `CONCURRENT_UPDATE` | Two requests changed the same booking at once; retry |
+| `422` | `IDEMPOTENCY_KEY_REUSED` | The key was already used for a different purchase |
 | `429` | `TOO_MANY_REQUESTS` | Too many login or registration attempts; see the `Retry-After` header |
+| `502` | `PAYMENT_PROVIDER_UNAVAILABLE` | The payment provider failed; nobody was charged |
 | `503` | `SERVICE_UNAVAILABLE` | PostgreSQL or Redis cannot be reached |
 
 Errors raised by the framework (unknown path, unsupported method or media type) use the same format, with the HTTP status name as the code, for example `NOT_FOUND`. Authentication and authorization failures are raised inside Spring Security's filter chain and are routed to the same handler, so they have the same shape too.
@@ -334,7 +373,9 @@ Request validation gives early, precise errors. The database constraint is what 
 | Every seat category of the hall has a price | service check | — |
 | Showtimes in one hall do not overlap (back-to-back is allowed) | service query | exclusion constraint `ex_showtimes_hall_time` |
 | A seat is held by at most one customer at a time | atomic Lua script in Redis | — |
-| A seat is booked at most once per showtime | seat hold | `uq_booking_seats_showtime_seat` |
+| A seat has at most one active sale per showtime | seat hold | partial unique index `uq_booking_seats_showtime_seat` |
+| A purchase attempt is charged at most once | checkout lock in Redis | `uq_payments_user_idempotency_key` |
+| A payment pays for at most one booking | — | partial unique index `uq_bookings_payment` |
 | A booked seat belongs to the showtime's hall, and to its booking's showtime | service check | composite foreign keys on `booking_seats` |
 | Movies and halls with showtimes, and showtimes with bookings, cannot be deleted | — | foreign keys |
 
@@ -350,14 +391,18 @@ sequenceDiagram
     participant A as API
     participant R as Redis
     participant P as PostgreSQL
+    participant Pay as Payment provider
     C->>A: POST /showtimes/1/holds {seatIds}
     A->>R: Lua: all seats free? then take them (TTL 10 min)
     A->>P: any of them already sold?
     A-->>C: 201 hold, expiresAt
-    C->>A: POST /holds/{id}/confirm
-    A->>R: Lua: hold intact? keep it alive
-    A->>P: INSERT booking + seats (unique constraint)
-    A->>R: Lua: release the hold
+    C->>A: POST /holds/{id}/confirm (Idempotency-Key, paymentToken)
+    A->>P: seen this key before? then replay the answer
+    A->>R: lock the hold; Lua: hold intact? keep it alive
+    A->>P: INSERT payment PENDING, commit
+    A->>Pay: charge (reference = payment id)
+    A->>P: INSERT booking + seats, payment SUCCEEDED (one transaction)
+    A->>R: Lua: release the hold; unlock
     A-->>C: 201 booking
 ```
 
@@ -371,7 +416,7 @@ hold:{42}:user:<user id>  -> hold id    one hold per user per showtime
 
 - **All or nothing.** Taking several seats is a Lua script, which Redis runs as one uninterruptible step: either every requested seat is free and all are taken, or nothing changes and the response lists the seats that were not free. No customer ends up with half a selection, and there is no lock ordering to get wrong.
 - **Release only what is yours.** The release script deletes a seat key only if it still holds this hold's id, so releasing an expired hold cannot free a seat that someone else has since taken.
-- **Confirm in a safe order.** The hold is first checked and kept alive, then the booking is committed in PostgreSQL, and only then are the keys released. Releasing first would let another customer take a seat before the sale is committed.
+- **Confirm in a safe order.** The hold is first checked and kept alive, then the customer is charged and the booking is committed in PostgreSQL, and only then are the keys released. Releasing first would let another customer take a seat before the sale is committed.
 - **Prices are fixed at hold time.** The hold stores the prices the customer was shown; confirming charges those even if an administrator changes the showtime's prices in between.
 - **`{42}` is a hash tag.** It puts every key of a showtime in the same slot, which Redis Cluster requires of keys used in one script.
 
@@ -382,9 +427,40 @@ hold:{42}:user:<user id>  -> hold id    one hold per user per showtime
 | Redis loses all its keys | Customers in checkout get `404 HOLD_NOT_FOUND` and pick seats again; nothing is sold twice |
 | The application dies after committing a booking but before releasing the hold | The leftover keys expire; the seat map reads sold seats from PostgreSQL, so the seat shows as `BOOKED` |
 | Redis is unreachable | Holding seats answers `503`; browsing and the seat map keep working (without holds) |
-| The same hold is confirmed twice at once | One request creates the booking; the others get `404` or lose on the constraint with `409` |
+| The same hold is paid for twice at once | One request pays and books; the others get `409 PAYMENT_IN_PROGRESS` before any money moves |
 
-`HoldConcurrencyTest` has 50 customers request the same two seats in the same instant and asserts that exactly one gets both and the other 49 are left with nothing. With the "is the seat free?" check removed from the script, all 50 "won". A second test uses overlapping pairs of seats and asserts that nobody ever holds half a pair; a third confirms one hold ten times at once and asserts one booking.
+`HoldConcurrencyTest` has 50 customers request the same two seats in the same instant and asserts that exactly one gets both and the other 49 are left with nothing. With the "is the seat free?" check removed from the script, all 50 "won". A second test uses overlapping pairs of seats and asserts that nobody ever holds half a pair; a third pays for one hold ten times at once and asserts one charge and one booking.
+
+### Paying: charging exactly once
+
+A payment involves three systems (Redis, the payment provider, PostgreSQL) and no transaction spans them. A request can also simply be sent twice: the customer double-clicks, or the response is lost and the client retries. The design goal is that none of this charges a customer twice or takes money without giving a booking.
+
+- **Idempotency keys.** The client generates a unique `Idempotency-Key` per purchase attempt. The payment row is the record of that key: `uq_payments_user_idempotency_key` makes a second payment with the same key impossible to store. A repeated request is answered from the recorded payment, with `Idempotent-Replayed: true`, without touching the provider. A decline is replayed as the same decline. Using the key for a different hold is `422`.
+- **Recorded before charged.** The payment is saved as `PENDING` and committed before the provider is called, so there is always a trace of an attempt.
+- **No database transaction around the provider call.** A slow provider would otherwise hold database connections, and a rollback could erase the record of a charge that did happen.
+- **Booking and payment succeed together.** Saving the booking and marking the payment `SUCCEEDED` is one transaction.
+- **A lock before the charge.** Only one request at a time may pay for a given hold (a Redis key set with `NX` and a time to live, released only by its owner). A second request is refused before any money moves.
+- **A refund if the booking fails.** If the customer was charged and the booking then cannot be saved, the charge is refunded immediately and the payment becomes `REFUNDED`.
+- **A job for whatever is left.** If the application dies between the charge and the booking, the payment stays `PENDING`. `PaymentReconciler` runs every minute, asks the provider what happened to payments untouched for five minutes, and refunds the ones that were charged. It also retries refunds that could not be sent. Every step is safe to repeat, so several instances may run it.
+
+| If | Then |
+| --- | --- |
+| The response is lost and the client retries with the same key | The recorded booking is returned; no second charge |
+| The card is declined | `402`; the seats stay held; a new attempt with a new key can succeed |
+| The provider fails | `502`; nobody is charged; the payment is recorded as `FAILED` |
+| The charge succeeds but the booking cannot be saved | The charge is refunded at once; `409` |
+| The application dies after the charge | The reconciliation job refunds it |
+| The lock in Redis is lost and several requests charge | The unique index lets one booking through; every other charge is refunded |
+
+`CheckoutConcurrencyTest` sends the same request ten times at once and asserts one charge. `CheckoutWithoutLockTest` removes the lock on purpose: several requests do charge the customer, exactly one booking is created, and every other charge is refunded, leaving one net charge and no unfinished payment.
+
+### Cancelling a booking
+
+`POST /bookings/{id}/cancel` is allowed for the owner and administrators until the showtime starts.
+
+- **The seats go back on sale, the booking stays on record.** The seat rows are marked inactive instead of being deleted, and the "one sale per seat" rule is a partial unique index over active rows only: `CREATE UNIQUE INDEX ... ON booking_seats (showtime_id, seat_id) WHERE active`. The seat can be sold again while the cancelled booking keeps its tickets as history.
+- **Cancel first, refund second.** The cancellation is committed together with the fact that a refund is owed (`REFUND_PENDING`); only then is the provider called. If the provider is down, the customer still gets a cancelled booking, the seat is still freed, and the reconciliation job completes the refund later.
+- **Repeating is harmless.** Cancelling a cancelled booking returns it unchanged. Two simultaneous cancellations are separated by optimistic locking (a `version` column): one proceeds, the other is told to retry, and the booking is refunded once.
 
 ### Overlapping showtimes
 
@@ -408,6 +484,7 @@ EXCLUDE USING gist (hall_id WITH =, tstzrange(start_time, end_time, '[)') WITH &
 | `V2` | Halls, seats, prices per seat category, exclusion constraint for overlaps; bookings point at seats |
 | `V3` | Users; bookings reference the account that made them |
 | `V4` | A booking can contain several seats (`booking_seats`) |
+| `V5` | Payments; bookings get a status and a payment; cancelled seats stop blocking new sales |
 
 `V2` migrates existing data instead of dropping it: each distinct theater name becomes a hall with 15 × 20 seats (the first API accepted seat numbers 1–300), the old showtime price becomes its standard price, and each booking is pointed at its seat and keeps the price it was sold for. `V3` gives the user ids carried by older bookings placeholder accounts that cannot be logged into, so the new foreign key holds. `V4` turns each existing single-seat booking into an order with one seat row. `SchemaMigrationTest` builds a database at `V1`, fills it, migrates to the latest version and checks the result.
 
@@ -457,6 +534,7 @@ Windows:
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | Database connection | the compose database |
 | `REDIS_HOST`, `REDIS_PORT` | Redis connection | `localhost:6379` |
 | `HOLD_TTL` | How long held seats stay reserved (ISO-8601 duration) | `PT10M` |
+| `PAYMENT_CURRENCY` | ISO 4217 code of the currency all prices are in | `USD` |
 | `AUTH_RATE_LIMIT` | Login and registration attempts per client address per minute | `10` |
 | `JWT_SECRET` | Key that signs access tokens, at least 32 characters | empty: a random key per start, so tokens stop working after a restart |
 | `JWT_TTL` | Lifetime of an access token (ISO-8601 duration) | `PT1H` |
@@ -479,4 +557,4 @@ Windows:
 
 Docker must be running: the API tests start disposable PostgreSQL and Redis containers through Testcontainers and call the application over HTTP, so they exercise JSON mapping, validation, security, transactions, migrations, constraints and the Redis scripts together. Rules that need no database (text normalization, request validation, sort allow-list) have plain unit tests.
 
-Current suite: **150 tests passing**.
+Current suite: **181 tests passing**.

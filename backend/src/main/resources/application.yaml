@@ -44,6 +44,17 @@ app:
     max-seats: 8
     # While a hold is being turned into a booking it is kept alive at least this long.
     confirm-grace: PT30S
+  payments:
+    # ISO 4217 code of the currency all prices are in.
+    currency: ${PAYMENT_CURRENCY:USD}
+    # Sandbox provider: how long the tok_slow test token takes.
+    slow-delay: PT1S
+    # Unfinished payments are looked at this often ...
+    reconcile-interval: PT1M
+    # ... a PENDING one untouched for this long is abandoned and refunded if it was charged ...
+    abandoned-after: PT5M
+    # ... and a refund that could not be sent is retried after this long.
+    refund-retry-after: PT30S
   rate-limit:
     # Login and registration attempts allowed per client address per window.
     auth:

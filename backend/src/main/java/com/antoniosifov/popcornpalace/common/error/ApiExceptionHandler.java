@@ -3,6 +3,7 @@ package com.antoniosifov.popcornpalace.common.error;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.antoniosifov.popcornpalace.common.ratelimit.RateLimitExceededException;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -106,6 +107,12 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler
         if (exception instanceof DataIntegrityViolationException) {
             log.warn("Unmapped data integrity violation", exception);
             return problem(HttpStatus.CONFLICT, ErrorCode.DATA_CONFLICT.name(), "The request conflicts with existing data");
+        }
+        if (exception instanceof ConcurrencyFailureException) {
+            // Two requests changed the same row at once (optimistic lock, or a
+            // lock that could not be taken). The loser did nothing and may retry.
+            return problem(HttpStatus.CONFLICT, ErrorCode.CONCURRENT_UPDATE.name(),
+                    "The resource was changed by another request at the same time. Please retry");
         }
         if (exception instanceof DataAccessResourceFailureException || exception instanceof QueryTimeoutException) {
             // PostgreSQL or Redis cannot be reached or did not answer in time:
