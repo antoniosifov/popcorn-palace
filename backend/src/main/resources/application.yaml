@@ -11,10 +11,23 @@ spring:
   jpa:
     open-in-view: false
     hibernate:
-      ddl-auto: update
-  jackson:
-    deserialization:
-      # Requests still bind straight to JPA entities, and clients send partial
-      # objects such as {"movie": {"id": 1}}. Jackson 3 rejects the missing
-      # primitive fields by default. Remove once request DTOs replace entities.
-      fail-on-null-for-primitives: false
+      # Flyway owns the schema (see db/migration). Hibernate only verifies
+      # at startup that the entities match it.
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  data:
+    web:
+      pageable:
+        max-page-size: 100
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  cors:
+    # Browser origins allowed to call the API.
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
