@@ -4,8 +4,8 @@
 
 Movie ticket booking application in a single repository.
 
-- `backend/` — Java 21, Spring Boot 4, Spring Data JPA and PostgreSQL API.
-- `frontend/` — existing HTML, CSS and JavaScript client; starting point for the planned Next.js + TypeScript migration.
+- `backend/` — Java 21, Spring Boot 4, Spring Data JPA, Flyway and PostgreSQL API.
+- `frontend/` — legacy static client for the first API version; being replaced by a Next.js + TypeScript client.
 - `compose.yml` — local stack: PostgreSQL and the API.
 
 ## Run locally
@@ -18,7 +18,10 @@ Start the database and the API from the repository root:
 docker compose up --build
 ```
 
-The API listens on http://localhost:8080.
+The API listens on http://localhost:8080. Open http://localhost:8080/swagger-ui.html
+to browse and call every endpoint from the browser.
+
+If port 8080 or 5432 is taken, copy `.env.example` to `.env` and change the ports.
 
 ### Run the API from your IDE instead
 
@@ -44,14 +47,9 @@ environment variables and default to the local compose database.
 
 ### Frontend
 
-Serve the frontend from the repository root (Python 3 or any static HTTP server):
-
-```sh
-python -m http.server 5500 --directory frontend
-```
-
-Open http://localhost:5500. The client defaults to http://localhost:8080;
-see [frontend configuration](frontend/README.md#api-configuration) for overrides.
+The static pages in `frontend/` target the first version of the API and do not
+work with the current `/api/v1` backend. Until the new client lands, use
+Swagger UI.
 
 ## Tests
 
@@ -66,8 +64,8 @@ must be running. The same command runs in CI on every pull request.
 
 ## Component documentation
 
-- [Backend API and validation](backend/README.md)
-- [Frontend workflows and configuration](frontend/README.md)
+- [Backend API, errors and business rules](backend/README.md)
+- [Legacy static frontend](frontend/README.md)
 
 ## Repository history
 
