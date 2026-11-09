@@ -7,7 +7,11 @@ import jakarta.mail.internet.MimeMessage;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,8 +22,12 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.core.KafkaOperations;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
 import org.testcontainers.kafka.KafkaContainer;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,6 +36,9 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * The whole service, as it runs: a booking event is published to a real
@@ -38,7 +49,9 @@ import static org.awaitility.Awaitility.await;
         "spring.mail.port=3025",
         // Fail fast in tests: two quick retries before the dead-letter topic.
         "app.notifications.max-retries=2",
-        "app.notifications.retry-interval=PT0.2S"
+        "app.notifications.retry-interval=PT0.2S",
+        // No trace collector runs during tests.
+        "management.tracing.export.otlp.enabled=false"
 })
 @Import(TestcontainersConfiguration.class)
 class NotificationFlowTest
@@ -57,6 +70,8 @@ class NotificationFlowTest
     private StringRedisTemplate redis;
     @Autowired
     private KafkaContainer kafkaContainer;
+    @Autowired
+    private WebApplicationContext context;
 
     @BeforeEach
     void startClean() throws Exception
@@ -193,7 +208,61 @@ class NotificationFlowTest
         assertThat(awaitEmails(1).get(0).getAllRecipients()[0]).hasToString("marker@example.com");
     }
 
+    @DisplayName("The email carries the trace id of the booking request its event came from")
+    @Test
+    void emailCarriesTheTraceOfTheBooking() throws Exception
+    {
+        UUID bookingId = UUID.randomUUID();
+        String traceId = "4bf92f3577b34da6a3ce929d0e0e4736";
+        ProducerRecord<String, String> message = new ProducerRecord<>(TOPIC, bookingId.toString(),
+                event(UUID.randomUUID(), "BookingConfirmed", bookingId, "anna@example.com"));
+        // The header the booking API's outbox relay puts on every message.
+        message.headers().add("traceparent", ("00-" + traceId + "-00f067aa0ba902b7-01").getBytes(StandardCharsets.UTF_8));
+
+        // A plain producer: the template would start a trace of its own and replace the header.
+        try (KafkaProducer<String, String> producer = new KafkaProducer<>(producerProperties())) {
+            producer.send(message).get();
+        }
+
+        MimeMessage email = awaitEmails(1).get(0);
+        assertThat(email.getHeader(TicketMailer.TRACE_HEADER)).containsExactly(traceId);
+    }
+
+    @DisplayName("Health and metrics are served over HTTP, for the stack to watch")
+    @Test
+    void servesHealthAndMetrics() throws Exception
+    {
+        MockMvc mvc = MockMvcBuilders.webAppContextSetup(context).build();
+
+        mvc.perform(get("/actuator/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"))
+                .andExpect(jsonPath("$.components.kafka.status").value("UP"))
+                .andExpect(jsonPath("$.components.redis.status").value("UP"))
+                .andExpect(jsonPath("$.components.mail.status").value("UP"));
+        mvc.perform(get("/actuator/health/readiness")).andExpect(status().isOk());
+
+        String metrics = mvc.perform(get("/actuator/prometheus"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(metrics)
+                .contains("application=\"popcorn-palace-notifications\"")
+                .contains("popcorn_notifications_emails_total{")
+                .contains("popcorn_notifications_dead_letters_total")
+                // The Kafka client's own metrics, labelled like everything else.
+                .contains("kafka_consumer_connection_count{application=\"popcorn-palace-notifications\",");
+    }
+
     // ------------------------------------------------------------ helpers
+
+    private Properties producerProperties()
+    {
+        Properties properties = new Properties();
+        properties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaContainer.getBootstrapServers());
+        properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        return properties;
+    }
 
     private void publish(UUID bookingId, String eventJson) throws Exception
     {
