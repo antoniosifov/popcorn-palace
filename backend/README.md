@@ -1,6 +1,6 @@
 # Popcorn Palace API
 
-A movie ticket booking backend built with Java 21 and Spring Boot 4. It manages a movie catalog, halls with real seat layouts, showtimes with per-category prices and seat bookings for registered users, and keeps its rules intact when requests race each other.
+A movie ticket booking backend built with Java 21 and Spring Boot 4. It manages a movie catalog, halls with real seat layouts and showtimes with per-category prices, and lets registered users hold seats while they check out and then book them. Its rules stay intact when requests race each other.
 
 [Frontend](../frontend/README.md) · [Portfolio](https://antoniosifov.com) · [LinkedIn](https://www.linkedin.com/in/anton-iosifov/)
 
@@ -9,11 +9,13 @@ A movie ticket booking backend built with Java 21 and Spring Boot 4. It manages 
 - Versioned REST API (`/api/v1`) with request/response DTOs, pagination and an allow-list for sorting
 - Halls with row-by-row seat layouts, and a seat map per showtime with prices and availability
 - Accounts with stateless JWT authentication and two roles: customers book, administrators manage the catalog
+- Checkout with temporary seat holds in Redis (atomic Lua scripts, automatic expiry) confirmed into bookings in PostgreSQL
+- Login and registration throttled per client address
 - Interactive API documentation generated from the code (Swagger UI, OpenAPI 3.1)
 - Database schema owned by Flyway migrations that carry existing data forward; Hibernate only validates it
 - Business rules enforced by database constraints, so they hold under concurrency
 - Uniform error responses in the RFC 9457 "problem details" format with machine-readable codes
-- 126 automated tests, most of them calling the API over HTTP against a real PostgreSQL
+- 150 automated tests, most of them calling the API over HTTP against a real PostgreSQL and Redis
 
 ## Architecture
 
@@ -25,6 +27,7 @@ flowchart LR
     Controller --> Service["Services<br/>business rules, transactions"]
     Service --> Repository["Spring Data JPA repositories"]
     Repository --> Database[("PostgreSQL<br/>constraints + Flyway schema")]
+    Service --> Redis[("Redis<br/>seat holds, rate limits")]
     Controller -. errors .-> Handler["ApiExceptionHandler<br/>problem details"]
     Service -. errors .-> Handler
     Database -. constraint violations .-> Handler
@@ -35,7 +38,9 @@ src/main/java/com/antoniosifov/popcornpalace/
 ├── movie/       # catalog
 ├── hall/        # halls and their seats
 ├── showtime/    # scheduling, prices per seat category
-├── booking/     # seat booking, seat map
+├── hold/        # temporary seat holds in Redis, checkout
+├── booking/     # confirmed bookings
+├── seatmap/     # seat map of a showtime: available, held, booked
 ├── user/        # accounts
 ├── auth/        # registration, login, token issuing
 ├── security/    # who may call what, token verification
@@ -43,7 +48,7 @@ src/main/java/com/antoniosifov/popcornpalace/
 src/main/resources/db/migration/   # Flyway SQL migrations
 ```
 
-Packages depend on each other in one direction only: `booking` → `showtime` → `hall`, `movie`.
+Packages depend on each other in one direction only: `seatmap` → `hold` → `booking` → `showtime` → `hall`, `movie`.
 
 ## Technology
 
@@ -53,7 +58,8 @@ Packages depend on each other in one direction only: `booking` → `showtime` �
 | API | Spring Web MVC, Bean Validation, springdoc-openapi |
 | Security | Spring Security (OAuth2 resource server), self-issued JWT (HS256), BCrypt |
 | Persistence | Spring Data JPA, Hibernate 7, PostgreSQL 17, Flyway |
-| Testing | JUnit 5, MockMvc, Testcontainers (PostgreSQL), AssertJ |
+| Holds and rate limits | Redis 8, Spring Data Redis, Lua scripts |
+| Testing | JUnit 5, MockMvc, Testcontainers (PostgreSQL, Redis), AssertJ |
 | Tooling | Maven Wrapper, Docker, Docker Compose, GitHub Actions, Lombok |
 
 ## API
@@ -79,8 +85,11 @@ Base URL: `http://localhost:8080/api/v1`. Interactive documentation: http://loca
 | `POST` | `/showtimes` | Schedule a showtime | admin | `201` + `Location` |
 | `PUT` | `/showtimes/{id}` | Replace a showtime | admin | `200` |
 | `DELETE` | `/showtimes/{id}` | Delete a showtime | admin | `204` |
-| `GET` | `/showtimes/{id}/seats` | Seat map: every seat with price and availability | anyone | `200` |
-| `POST` | `/bookings` | Book a seat for the logged-in user | logged in | `201` + `Location` |
+| `GET` | `/showtimes/{id}/seats` | Seat map: every seat with price and status | anyone | `200` |
+| `POST` | `/showtimes/{id}/holds` | Hold seats for a few minutes | logged in | `201` |
+| `GET` | `/showtimes/{id}/holds/mine` | My current hold for this showtime | logged in | `200` |
+| `DELETE` | `/showtimes/{id}/holds/{holdId}` | Release a hold | owner | `204` |
+| `POST` | `/showtimes/{id}/holds/{holdId}/confirm` | Turn a hold into a booking | owner | `201` + `Location` |
 | `GET` | `/bookings` | List my bookings (paginated, newest first) | logged in | `200` |
 | `GET` | `/bookings/{id}` | Get a booking | owner or admin | `200` |
 
@@ -124,7 +133,9 @@ Design decisions:
 - **Someone else's booking is a `404`, not a `403`.** A `403` would confirm that the id exists.
 - **Passwords are stored only as BCrypt hashes** and are kept out of logs (`toString` of the request objects masks them).
 
-Not implemented yet: refresh tokens and login rate limiting.
+- **Login and registration are throttled.** Ten attempts per client address per minute across both endpoints, counted in Redis so all instances share the count; after that the API answers `429 TOO_MANY_REQUESTS` with a `Retry-After` header. If Redis is down the limiter lets requests through rather than locking everyone out.
+
+Not implemented yet: refresh tokens.
 
 ### Request bodies
 
@@ -164,37 +175,49 @@ Showtime. Times are ISO-8601 instants; any UTC offset is accepted and responses 
 }
 ```
 
-Booking. The seat id comes from the showtime's seat map; the user comes from the access token.
+Hold. The seat ids come from the showtime's seat map; the user comes from the access token.
 
 ```json
 {
-  "showtimeId": 1,
-  "seatId": 101
+  "seatIds": [100, 101]
 }
 ```
 
-The response is the ticket: the movie, hall and start time, where the seat is and what was paid. The price is a copy, so changing the showtime's prices later does not rewrite past bookings:
+```json
+{
+  "id": "711c015e-6ea7-4222-bb31-87e2188ca53e",
+  "showtimeId": 1,
+  "seats": [
+    { "seatId": 100, "row": 9, "seatNumber": 4, "category": "VIP", "price": 22.00 },
+    { "seatId": 101, "row": 9, "seatNumber": 5, "category": "VIP", "price": 22.00 }
+  ],
+  "totalPrice": 44.00,
+  "expiresAt": "2030-01-10T12:10:00.000Z"
+}
+```
+
+Confirming the hold (`POST .../holds/{holdId}/confirm`, no body) returns the booking: the movie, hall and start time, one ticket per seat and the total. Prices are copies of what the customer was shown when the seats were held, so later price changes do not rewrite them:
 
 ```json
 {
-  "id": "f2fc3714-ea45-4679-ba32-bba5019b91ba",
+  "id": "860324e2-4308-4888-9252-9c1b1805972a",
   "showtimeId": 1,
   "movieTitle": "Interstellar",
   "hallName": "Hall 1",
   "startTime": "2030-01-15T18:00:00Z",
-  "seatId": 101,
-  "row": 9,
-  "seatNumber": 5,
-  "category": "VIP",
-  "price": 22.00,
+  "seats": [
+    { "seatId": 100, "row": 9, "seatNumber": 4, "category": "VIP", "price": 22.00 },
+    { "seatId": 101, "row": 9, "seatNumber": 5, "category": "VIP", "price": 22.00 }
+  ],
+  "totalPrice": 44.00,
   "userId": "85df2e82-eb22-4966-8885-8234a8556154",
-  "createdAt": "2030-01-10T12:00:00.000Z"
+  "createdAt": "2030-01-10T12:03:00.000Z"
 }
 ```
 
 ### Seat map
 
-`GET /showtimes/{id}/seats` returns everything a client needs to draw the hall and let a customer pick a seat (shortened):
+`GET /showtimes/{id}/seats` returns everything a client needs to draw the hall and let a customer pick seats (shortened). A seat is `AVAILABLE`, `HELD` (someone is checking out; it becomes available again if they do not finish) or `BOOKED`. The endpoint is public; when it is called with an access token, the caller's own held seats have `heldByMe: true`.
 
 ```json
 {
@@ -202,13 +225,14 @@ The response is the ticket: the movie, hall and start time, where the seat is an
   "hallId": 1,
   "hallName": "Hall 1",
   "totalSeats": 116,
-  "availableSeats": 115,
+  "availableSeats": 113,
   "rows": [
     {
       "row": 9,
       "seats": [
-        { "seatId": 100, "number": 4, "category": "VIP", "price": 22.00, "status": "AVAILABLE" },
-        { "seatId": 101, "number": 5, "category": "VIP", "price": 22.00, "status": "BOOKED" }
+        { "seatId": 99, "number": 3, "category": "VIP", "price": 22.00, "status": "AVAILABLE", "heldByMe": false },
+        { "seatId": 100, "number": 4, "category": "VIP", "price": 22.00, "status": "HELD", "heldByMe": true },
+        { "seatId": 102, "number": 6, "category": "VIP", "price": 22.00, "status": "BOOKED", "heldByMe": false }
       ]
     }
   ]
@@ -233,7 +257,7 @@ GET /api/v1/movies?page=0&size=20&sort=releaseYear,desc
 }
 ```
 
-Sorting is limited to an allow-list per resource (movies: `id`, `title`, `genre`, `durationMinutes`, `rating`, `releaseYear`; halls: `id`, `name`, `rowCount`, `seatCount`; showtimes: `id`, `startTime`, `endTime`; bookings: `createdAt`, `price`). Any other field returns `400 INVALID_SORT`.
+Sorting is limited to an allow-list per resource (movies: `id`, `title`, `genre`, `durationMinutes`, `rating`, `releaseYear`; halls: `id`, `name`, `rowCount`, `seatCount`; showtimes: `id`, `startTime`, `endTime`; bookings: `createdAt`, `totalPrice`). Any other field returns `400 INVALID_SORT`.
 
 ## Errors
 
@@ -243,11 +267,14 @@ Every error is an `application/problem+json` response ([RFC 9457](https://www.rf
 {
   "title": "Conflict",
   "status": 409,
-  "detail": "Row 9 seat 5 is already booked for this showtime",
-  "instance": "/api/v1/bookings",
-  "code": "SEAT_ALREADY_BOOKED"
+  "detail": "Some of the seats are being booked by another customer",
+  "instance": "/api/v1/showtimes/1/holds",
+  "code": "SEAT_ALREADY_HELD",
+  "seatIds": [101]
 }
 ```
+
+Seat conflicts carry `seatIds`, so a client can mark exactly the seats that were lost.
 
 Validation failures list every rejected field:
 
@@ -272,17 +299,23 @@ Validation failures list every rejected field:
 | `400` | `INVALID_SORT` | Sorting by a field outside the allow-list |
 | `400` | `HALL_TOO_LARGE` | A hall layout over 60 rows or 1000 seats |
 | `400` | `SHOWTIME_PRICE_MISSING` | No price for a seat category the hall uses |
-| `400` | `SEAT_NOT_IN_HALL` | Booking a seat that is not in the showtime's hall |
+| `400` | `SEAT_NOT_IN_HALL` | Holding a seat that is not in the showtime's hall |
+| `400` | `TOO_MANY_SEATS` | Holding more than eight seats at once |
 | `401` | `UNAUTHENTICATED` | No access token, or one that is invalid or expired (with a `WWW-Authenticate: Bearer` header) |
 | `401` | `INVALID_CREDENTIALS` | Login with an unknown email or a wrong password |
 | `403` | `FORBIDDEN` | The account's role does not allow the action |
 | `404` | `MOVIE_NOT_FOUND`, `HALL_NOT_FOUND`, `SHOWTIME_NOT_FOUND`, `SEAT_NOT_FOUND`, `BOOKING_NOT_FOUND` | The resource does not exist |
+| `404` | `HOLD_NOT_FOUND` | The hold does not exist, has expired, or belongs to someone else |
 | `409` | `EMAIL_TAKEN`, `MOVIE_TITLE_TAKEN`, `HALL_NAME_TAKEN` | The email or name is already in use |
 | `409` | `MOVIE_HAS_SHOWTIMES`, `HALL_HAS_SHOWTIMES` | Deleting a movie or hall that still has showtimes |
 | `409` | `SHOWTIME_OVERLAP` | The showtime overlaps another one in the same hall |
 | `409` | `SHOWTIME_HAS_BOOKINGS` | Deleting a showtime with bookings, or moving it to another hall |
-| `409` | `SHOWTIME_ALREADY_STARTED` | Booking a showtime that has already started |
-| `409` | `SEAT_ALREADY_BOOKED` | The seat is already booked for this showtime |
+| `409` | `SHOWTIME_ALREADY_STARTED` | Holding or booking seats of a showtime that has already started |
+| `409` | `SEAT_ALREADY_HELD` | A requested seat is held by another customer |
+| `409` | `SEAT_ALREADY_BOOKED` | A requested seat is already booked for this showtime |
+| `409` | `HOLD_ALREADY_EXISTS` | The user already has a hold for this showtime (its id is in `holdId`) |
+| `429` | `TOO_MANY_REQUESTS` | Too many login or registration attempts; see the `Retry-After` header |
+| `503` | `SERVICE_UNAVAILABLE` | PostgreSQL or Redis cannot be reached |
 
 Errors raised by the framework (unknown path, unsupported method or media type) use the same format, with the HTTP status name as the code, for example `NOT_FOUND`. Authentication and authorization failures are raised inside Spring Security's filter chain and are routed to the same handler, so they have the same shape too.
 
@@ -300,17 +333,58 @@ Request validation gives early, precise errors. The database constraint is what 
 | Showtime ends after it starts; prices not negative | `ShowtimeRequest` | `CHECK` constraints |
 | Every seat category of the hall has a price | service check | — |
 | Showtimes in one hall do not overlap (back-to-back is allowed) | service query | exclusion constraint `ex_showtimes_hall_time` |
-| A seat is booked at most once per showtime | service check | `uq_bookings_showtime_seat` |
-| A booked seat belongs to the showtime's hall | service check | composite foreign keys `fk_bookings_showtime`, `fk_bookings_seat` |
+| A seat is held by at most one customer at a time | atomic Lua script in Redis | — |
+| A seat is booked at most once per showtime | seat hold | `uq_booking_seats_showtime_seat` |
+| A booked seat belongs to the showtime's hall, and to its booking's showtime | service check | composite foreign keys on `booking_seats` |
 | Movies and halls with showtimes, and showtimes with bookings, cannot be deleted | — | foreign keys |
 
 Constraint violations are translated to API errors by constraint name in one place (`ConstraintErrors`).
 
-### Double booking
+### Checkout: holding seats, then booking them
 
-Checking "is the seat free?" and then inserting is not enough: two simultaneous requests can both see the seat as free. The unique constraint `uq_bookings_showtime_seat` is the real guard. The losing insert fails in the database and the API reports it as `409 SEAT_ALREADY_BOOKED`.
+A customer who has picked seats needs a few minutes to pay. During that time nobody else should be able to take those seats, and if the customer walks away the seats must come back on their own.
 
-`BookingConcurrencyTest` fires 30 simultaneous requests at one seat and asserts that exactly one gets `201` and one row exists. With the constraint removed, the same test produced 10 bookings for the seat.
+```mermaid
+sequenceDiagram
+    participant C as Customer
+    participant A as API
+    participant R as Redis
+    participant P as PostgreSQL
+    C->>A: POST /showtimes/1/holds {seatIds}
+    A->>R: Lua: all seats free? then take them (TTL 10 min)
+    A->>P: any of them already sold?
+    A-->>C: 201 hold, expiresAt
+    C->>A: POST /holds/{id}/confirm
+    A->>R: Lua: hold intact? keep it alive
+    A->>P: INSERT booking + seats (unique constraint)
+    A->>R: Lua: release the hold
+    A-->>C: 201 booking
+```
+
+**Holds live in Redis, sold seats live in PostgreSQL.** A hold is a set of keys with a time to live, so an abandoned checkout frees its seats without any cleanup job:
+
+```text
+hold:{42}:seat:17         -> hold id    one key per held seat
+hold:{42}:rec:<hold id>   -> JSON       the hold: owner, seats, prices
+hold:{42}:user:<user id>  -> hold id    one hold per user per showtime
+```
+
+- **All or nothing.** Taking several seats is a Lua script, which Redis runs as one uninterruptible step: either every requested seat is free and all are taken, or nothing changes and the response lists the seats that were not free. No customer ends up with half a selection, and there is no lock ordering to get wrong.
+- **Release only what is yours.** The release script deletes a seat key only if it still holds this hold's id, so releasing an expired hold cannot free a seat that someone else has since taken.
+- **Confirm in a safe order.** The hold is first checked and kept alive, then the booking is committed in PostgreSQL, and only then are the keys released. Releasing first would let another customer take a seat before the sale is committed.
+- **Prices are fixed at hold time.** The hold stores the prices the customer was shown; confirming charges those even if an administrator changes the showtime's prices in between.
+- **`{42}` is a hash tag.** It puts every key of a showtime in the same slot, which Redis Cluster requires of keys used in one script.
+
+**Redis is not what prevents a double sale.** It keeps customers out of each other's way; the guarantee is the unique constraint `uq_booking_seats_showtime_seat`. That is why the failure modes are harmless:
+
+| If | Then |
+| --- | --- |
+| Redis loses all its keys | Customers in checkout get `404 HOLD_NOT_FOUND` and pick seats again; nothing is sold twice |
+| The application dies after committing a booking but before releasing the hold | The leftover keys expire; the seat map reads sold seats from PostgreSQL, so the seat shows as `BOOKED` |
+| Redis is unreachable | Holding seats answers `503`; browsing and the seat map keep working (without holds) |
+| The same hold is confirmed twice at once | One request creates the booking; the others get `404` or lose on the constraint with `409` |
+
+`HoldConcurrencyTest` has 50 customers request the same two seats in the same instant and asserts that exactly one gets both and the other 49 are left with nothing. With the "is the seat free?" check removed from the script, all 50 "won". A second test uses overlapping pairs of seats and asserts that nobody ever holds half a pair; a third confirms one hold ten times at once and asserts one booking.
 
 ### Overlapping showtimes
 
@@ -324,7 +398,7 @@ EXCLUDE USING gist (hall_id WITH =, tstzrange(start_time, end_time, '[)') WITH &
 
 ### A seat that is not in the hall
 
-`bookings` repeats the hall id and has two composite foreign keys, `(showtime_id, hall_id)` and `(seat_id, hall_id)`. Together they make a booking for a seat from another hall impossible to store, and they stop a showtime that already has bookings from being moved to another hall.
+`booking_seats` repeats the showtime and hall ids and has three composite foreign keys: to its booking `(booking_id, showtime_id)`, to the showtime `(showtime_id, hall_id)` and to the seat `(seat_id, hall_id)`. Together they make it impossible to store a seat from another hall or a seat row that disagrees with its booking, and they stop a showtime that already has bookings from being moved to another hall.
 
 ## Migrations
 
@@ -333,8 +407,9 @@ EXCLUDE USING gist (hall_id WITH =, tstzrange(start_time, end_time, '[)') WITH &
 | `V1` | Movies, showtimes, bookings |
 | `V2` | Halls, seats, prices per seat category, exclusion constraint for overlaps; bookings point at seats |
 | `V3` | Users; bookings reference the account that made them |
+| `V4` | A booking can contain several seats (`booking_seats`) |
 
-`V2` migrates existing data instead of dropping it: each distinct theater name becomes a hall with 15 × 20 seats (the first API accepted seat numbers 1–300), the old showtime price becomes its standard price, and each booking is pointed at its seat and keeps the price it was sold for. `V3` gives the user ids carried by older bookings placeholder accounts that cannot be logged into, so the new foreign key holds. `SchemaMigrationTest` builds a database at `V1`, fills it, migrates to the latest version and checks the result.
+`V2` migrates existing data instead of dropping it: each distinct theater name becomes a hall with 15 × 20 seats (the first API accepted seat numbers 1–300), the old showtime price becomes its standard price, and each booking is pointed at its seat and keeps the price it was sold for. `V3` gives the user ids carried by older bookings placeholder accounts that cannot be logged into, so the new foreign key holds. `V4` turns each existing single-seat booking into an order with one seat row. `SchemaMigrationTest` builds a database at `V1`, fills it, migrates to the latest version and checks the result.
 
 ## Run locally
 
@@ -355,10 +430,10 @@ The API listens on http://localhost:8080 and Flyway creates the schema on first 
 
 ### API from your IDE
 
-Start only the database, from the repository root:
+Start only the database and Redis, from the repository root:
 
 ```bash
-docker compose up -d db
+docker compose up -d db redis
 ```
 
 Then, from `backend/`:
@@ -380,6 +455,9 @@ Windows:
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | Database connection | the compose database |
+| `REDIS_HOST`, `REDIS_PORT` | Redis connection | `localhost:6379` |
+| `HOLD_TTL` | How long held seats stay reserved (ISO-8601 duration) | `PT10M` |
+| `AUTH_RATE_LIMIT` | Login and registration attempts per client address per minute | `10` |
 | `JWT_SECRET` | Key that signs access tokens, at least 32 characters | empty: a random key per start, so tokens stop working after a restart |
 | `JWT_TTL` | Lifetime of an access token (ISO-8601 duration) | `PT1H` |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Administrator created at startup if missing | none outside compose |
@@ -399,6 +477,6 @@ Windows:
 .\mvnw.cmd verify
 ```
 
-Docker must be running: the API tests start a disposable PostgreSQL container through Testcontainers and call the application over HTTP, so they exercise JSON mapping, validation, transactions, migrations and constraints together. Rules that need no database (text normalization, request validation, sort allow-list) have plain unit tests.
+Docker must be running: the API tests start disposable PostgreSQL and Redis containers through Testcontainers and call the application over HTTP, so they exercise JSON mapping, validation, security, transactions, migrations, constraints and the Redis scripts together. Rules that need no database (text normalization, request validation, sort allow-list) have plain unit tests.
 
-Current suite: **126 tests passing**.
+Current suite: **150 tests passing**.
