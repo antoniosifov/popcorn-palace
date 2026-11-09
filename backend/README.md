@@ -2,7 +2,7 @@
 
 A movie ticket booking backend built with Java 21 and Spring Boot 4. It manages a movie catalog, halls with real seat layouts and showtimes with per-category prices, and lets registered users hold seats while they check out, pay for them and cancel later. Its rules stay intact when requests race each other.
 
-[Frontend](../frontend/README.md) · [Portfolio](https://antoniosifov.com) · [LinkedIn](https://www.linkedin.com/in/anton-iosifov/)
+[Notifications service](../notifications/README.md) · [Frontend](../frontend/README.md) · [Portfolio](https://antoniosifov.com) · [LinkedIn](https://www.linkedin.com/in/anton-iosifov/)
 
 ## Highlights
 
@@ -12,12 +12,13 @@ A movie ticket booking backend built with Java 21 and Spring Boot 4. It manages 
 - Checkout with temporary seat holds in Redis (atomic Lua scripts, automatic expiry) confirmed into bookings in PostgreSQL
 - Payments that are safe to retry: idempotency keys, a refund if the booking fails after the charge, and a job that settles payments left unfinished
 - Cancellation with refund; the seats go back on sale while the booking stays on record
+- Booking events published to Kafka through a transactional outbox, so an event exists if and only if the booking does; a separate service turns them into ticket emails
 - Login and registration throttled per client address
 - Interactive API documentation generated from the code (Swagger UI, OpenAPI 3.1)
 - Database schema owned by Flyway migrations that carry existing data forward; Hibernate only validates it
 - Business rules enforced by database constraints, so they hold under concurrency
 - Uniform error responses in the RFC 9457 "problem details" format with machine-readable codes
-- 181 automated tests, most of them calling the API over HTTP against a real PostgreSQL and Redis
+- 186 automated tests, most of them calling the API over HTTP against real PostgreSQL, Redis and Kafka
 
 ## Architecture
 
@@ -31,6 +32,8 @@ flowchart LR
     Repository --> Database[("PostgreSQL<br/>constraints + Flyway schema")]
     Service --> Redis[("Redis<br/>seat holds, locks, rate limits")]
     Service --> Provider["Payment provider<br/>(sandbox)"]
+    Database -- outbox relay --> Kafka[("Kafka<br/>booking events")]
+    Kafka --> Notifications["Notifications service<br/>ticket emails"]
     Controller -. errors .-> Handler["ApiExceptionHandler<br/>problem details"]
     Service -. errors .-> Handler
     Database -. constraint violations .-> Handler
@@ -44,7 +47,8 @@ src/main/java/com/antoniosifov/popcornpalace/
 ├── hold/        # temporary seat holds in Redis
 ├── payment/     # payments, the provider interface and its sandbox, reconciliation
 ├── checkout/    # paying for a hold and turning it into a booking
-├── booking/     # bookings and their cancellation
+├── booking/     # bookings and their cancellation; booking/event: what is published about them
+├── outbox/      # transactional outbox and the relay that sends it to Kafka
 ├── seatmap/     # seat map of a showtime: available, held, booked
 ├── user/        # accounts
 ├── auth/        # registration, login, token issuing
@@ -53,7 +57,7 @@ src/main/java/com/antoniosifov/popcornpalace/
 src/main/resources/db/migration/   # Flyway SQL migrations
 ```
 
-Packages depend on each other in one direction only: `checkout` → `hold` → `booking` → `payment`, and `booking` → `showtime` → `hall`, `movie`.
+Packages depend on each other in one direction only: `checkout` → `hold` → `booking` → `payment`, `outbox`, and `booking` → `showtime` → `hall`, `movie`.
 
 ## Technology
 
@@ -64,7 +68,8 @@ Packages depend on each other in one direction only: `checkout` → `hold` → `
 | Security | Spring Security (OAuth2 resource server), self-issued JWT (HS256), BCrypt |
 | Persistence | Spring Data JPA, Hibernate 7, PostgreSQL 17, Flyway |
 | Holds and rate limits | Redis 8, Spring Data Redis, Lua scripts |
-| Testing | JUnit 5, MockMvc, Testcontainers (PostgreSQL, Redis), AssertJ |
+| Events | Kafka 4.2 (KRaft), Spring Kafka, transactional outbox |
+| Testing | JUnit 5, MockMvc, Testcontainers (PostgreSQL, Redis, Kafka), AssertJ |
 | Tooling | Maven Wrapper, Docker, Docker Compose, GitHub Actions, Lombok |
 
 ## API
@@ -476,6 +481,54 @@ EXCLUDE USING gist (hall_id WITH =, tstzrange(start_time, end_time, '[)') WITH &
 
 `booking_seats` repeats the showtime and hall ids and has three composite foreign keys: to its booking `(booking_id, showtime_id)`, to the showtime `(showtime_id, hall_id)` and to the seat `(seat_id, hall_id)`. Together they make it impossible to store a seat from another hall or a seat row that disagrees with its booking, and they stop a showtime that already has bookings from being moved to another hall.
 
+## Events: the transactional outbox
+
+When a booking is confirmed or cancelled, other systems need to know: the [notifications service](../notifications/README.md) emails the tickets. The API tells them through Kafka, but a Kafka send cannot be part of a database transaction, and doing both leaves two bad outcomes: the booking is saved but the message is lost, or the message is sent but the booking rolls back.
+
+```mermaid
+flowchart LR
+    S["BookingService<br/>one transaction"] -->|INSERT booking| P[("PostgreSQL")]
+    S -->|INSERT outbox_events| P
+    R["OutboxRelay<br/>every 0.5 s"] -->|SELECT unpublished| P
+    R -->|send, wait for acks| K[("Kafka<br/>popcorn.booking-events")]
+    R -->|UPDATE published_at| P
+```
+
+- **Written with the booking.** `BookingEventPublisher` writes the event to `outbox_events` in the same transaction that saves or cancels the booking (`Outbox.append` refuses to run outside one). Both are saved or neither is.
+- **Delivered by a relay.** `OutboxRelay` runs every half second: it takes a batch of unpublished rows, sends them, waits for Kafka to acknowledge every one and only then marks them published, in one database transaction. If anything fails, the transaction rolls back and the rows are picked up again later.
+- **At least once, in order.** A crash between sending and marking resends the batch, so consumers deduplicate by `eventId`. Messages are keyed by booking id, so Kafka keeps one booking's events in order; and only one relay publishes at a time (a PostgreSQL advisory lock), so a later event never overtakes an earlier one even with several instances of the API running.
+- **Published as written.** The payload column is `JSON`, not `JSONB`: `JSONB` would reorder keys and reformat numbers, and what consumers receive should be exactly what the application serialized.
+- **Fat events.** An event carries the customer's email, the movie, the hall, the seats and the prices, so a consumer never has to call the API back.
+
+The event:
+
+```json
+{
+  "eventId": "9a7d3b2e-...",
+  "type": "BookingConfirmed",
+  "version": 1,
+  "occurredAt": "2030-01-10T12:03:00.000Z",
+  "booking": {
+    "id": "860324e2-...", "status": "CONFIRMED", "showtimeId": 1,
+    "movieTitle": "Interstellar", "hallName": "Hall 1", "startTime": "2030-01-15T18:00:00Z",
+    "seats": [{ "row": 9, "seatNumber": 4, "category": "VIP", "price": 22.00 }],
+    "totalPrice": 22.00, "currency": "USD"
+  },
+  "customer": { "id": "85df2e82-...", "email": "anna@example.com", "displayName": "Anna" }
+}
+```
+
+Kafka headers `eventType` and `eventId` repeat the type and id, so a consumer can route a message without parsing it. Fields may be added; renaming or removing one needs a new `version`.
+
+| If | Then |
+| --- | --- |
+| Kafka is unreachable | Events wait in the outbox; the relay retries with a growing pause (up to 30 s) and sends them when Kafka is back |
+| The relay dies after sending, before marking | The batch is sent again; consumers ignore the duplicates by `eventId` |
+| The booking's transaction rolls back | The event rolls back with it: nothing is ever published for a booking that does not exist |
+| Several API instances run | One relay publishes at a time; the others find the lock taken and step aside |
+
+`OutboxTest` covers the round trip from a booking to a message read back from Kafka, ordering of a confirmation and its cancellation, rollback leaving no event, a Kafka outage, and four relays running at once delivering sixty events exactly once and in order.
+
 ## Migrations
 
 | Version | What it does |
@@ -485,6 +538,7 @@ EXCLUDE USING gist (hall_id WITH =, tstzrange(start_time, end_time, '[)') WITH &
 | `V3` | Users; bookings reference the account that made them |
 | `V4` | A booking can contain several seats (`booking_seats`) |
 | `V5` | Payments; bookings get a status and a payment; cancelled seats stop blocking new sales |
+| `V6` | The outbox table for booking events |
 
 `V2` migrates existing data instead of dropping it: each distinct theater name becomes a hall with 15 × 20 seats (the first API accepted seat numbers 1–300), the old showtime price becomes its standard price, and each booking is pointed at its seat and keeps the price it was sold for. `V3` gives the user ids carried by older bookings placeholder accounts that cannot be logged into, so the new foreign key holds. `V4` turns each existing single-seat booking into an order with one seat row. `SchemaMigrationTest` builds a database at `V1`, fills it, migrates to the latest version and checks the result.
 
@@ -507,10 +561,10 @@ The API listens on http://localhost:8080 and Flyway creates the schema on first 
 
 ### API from your IDE
 
-Start only the database and Redis, from the repository root:
+Start only the infrastructure, from the repository root:
 
 ```bash
-docker compose up -d db redis
+docker compose up -d db redis kafka mailpit
 ```
 
 Then, from `backend/`:
@@ -533,6 +587,8 @@ Windows:
 | --- | --- | --- |
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | Database connection | the compose database |
 | `REDIS_HOST`, `REDIS_PORT` | Redis connection | `localhost:6379` |
+| `KAFKA_BOOTSTRAP_SERVERS` | Kafka, for publishing booking events | `localhost:29092` |
+| `OUTBOX_RELAY_INTERVAL` | How often the outbox is sent to Kafka (ISO-8601 duration) | `PT0.5S` |
 | `HOLD_TTL` | How long held seats stay reserved (ISO-8601 duration) | `PT10M` |
 | `PAYMENT_CURRENCY` | ISO 4217 code of the currency all prices are in | `USD` |
 | `AUTH_RATE_LIMIT` | Login and registration attempts per client address per minute | `10` |
@@ -555,6 +611,6 @@ Windows:
 .\mvnw.cmd verify
 ```
 
-Docker must be running: the API tests start disposable PostgreSQL and Redis containers through Testcontainers and call the application over HTTP, so they exercise JSON mapping, validation, security, transactions, migrations, constraints and the Redis scripts together. Rules that need no database (text normalization, request validation, sort allow-list) have plain unit tests.
+Docker must be running: the API tests start disposable PostgreSQL, Redis and Kafka containers through Testcontainers and call the application over HTTP, so they exercise JSON mapping, validation, security, transactions, migrations, constraints, the Redis scripts and the outbox together. Rules that need no database (text normalization, request validation, sort allow-list) have plain unit tests.
 
-Current suite: **181 tests passing**.
+Current suite: **186 tests passing**. The notifications service has its own suite, see its [README](../notifications/README.md).

@@ -100,7 +100,7 @@ public abstract class ApiIntegrationTest
     void resetState()
     {
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("TRUNCATE TABLE booking_seats, bookings, payments, showtime_prices, showtimes, seats, halls, movies, users RESTART IDENTITY CASCADE");
+        jdbc.execute("TRUNCATE TABLE outbox_events, booking_seats, bookings, payments, showtime_prices, showtimes, seats, halls, movies, users RESTART IDENTITY CASCADE");
         paymentProvider.reset();
         // Seat holds and rate-limit counters live in Redis.
         redis.execute((RedisCallback<Void>) connection -> {

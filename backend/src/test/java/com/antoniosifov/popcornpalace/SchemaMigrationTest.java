@@ -163,7 +163,7 @@ class SchemaMigrationTest
         migrateToLatest();
 
         assertThat(jdbc.queryForObject(
-                "SELECT count(*) FROM flyway_schema_history WHERE success", Long.class)).isGreaterThanOrEqualTo(5);
+                "SELECT count(*) FROM flyway_schema_history WHERE success", Long.class)).isGreaterThanOrEqualTo(6);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM halls", Long.class)).isZero();
     }
 

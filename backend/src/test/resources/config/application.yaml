@@ -1,0 +1,7 @@
+# Overrides for tests, merged over the main application.yaml.
+
+app:
+  outbox:
+    # Tests publish the outbox themselves, at the moment they choose, so the
+    # background relay must not race them.
+    relay-interval: PT1H

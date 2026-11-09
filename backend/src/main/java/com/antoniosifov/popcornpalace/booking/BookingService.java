@@ -1,5 +1,6 @@
 package com.antoniosifov.popcornpalace.booking;
 
+import com.antoniosifov.popcornpalace.booking.event.BookingEventPublisher;
 import com.antoniosifov.popcornpalace.common.error.ApiException;
 import com.antoniosifov.popcornpalace.common.error.ErrorCode;
 import com.antoniosifov.popcornpalace.common.web.PageResponse;
@@ -42,18 +43,21 @@ public class BookingService
     private final SeatRepository seatRepository;
     private final PaymentRepository paymentRepository;
     private final PaymentService paymentService;
+    private final BookingEventPublisher events;
     private final TransactionTemplate transaction;
     private final Clock clock;
 
     public BookingService(BookingRepository bookingRepository, ShowtimeRepository showtimeRepository,
                           SeatRepository seatRepository, PaymentRepository paymentRepository,
-                          PaymentService paymentService, PlatformTransactionManager transactionManager, Clock clock)
+                          PaymentService paymentService, BookingEventPublisher events,
+                          PlatformTransactionManager transactionManager, Clock clock)
     {
         this.bookingRepository = bookingRepository;
         this.showtimeRepository = showtimeRepository;
         this.seatRepository = seatRepository;
         this.paymentRepository = paymentRepository;
         this.paymentService = paymentService;
+        this.events = events;
         this.transaction = new TransactionTemplate(transactionManager);
         this.clock = clock;
     }
@@ -87,9 +91,9 @@ public class BookingService
     }
 
     /**
-     * Records the sale of the given seats and marks the payment as succeeded,
-     * in one transaction: either the booking exists and is paid, or neither
-     * change happened. Called after the customer has been charged.
+     * Records the sale of the given seats, marks the payment as succeeded and
+     * queues the "booking confirmed" event, in one transaction: either all
+     * three happened or none did. Called after the customer has been charged.
      *
      * <p>This method does not check that the seats are free. It does not need
      * to: the unique index uq_booking_seats_showtime_seat rejects a seat that
@@ -125,7 +129,12 @@ public class BookingService
         seats.stream()
                 .sorted(Comparator.comparingInt(Seat::getRowNumber).thenComparingInt(Seat::getSeatNumber))
                 .forEach(seat -> booking.addSeat(seat, pricesBySeat.get(seat.getId())));
-        return BookingResponse.from(bookingRepository.saveAndFlush(booking));
+        Booking saved = bookingRepository.saveAndFlush(booking);
+
+        // Written to the outbox in this same transaction: the event exists if
+        // and only if the booking does.
+        events.confirmed(saved);
+        return BookingResponse.from(saved);
     }
 
     /**
@@ -153,6 +162,7 @@ public class BookingService
                         "The showtime has already started; the booking can no longer be cancelled");
             }
             booking.cancel(now);
+            events.cancelled(booking);
 
             Payment payment = booking.getPayment();
             if (payment != null && payment.getStatus() == PaymentStatus.SUCCEEDED) {

@@ -8,6 +8,19 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/popcorn-palace}
     username: ${DB_USERNAME:popcorn-palace}
     password: ${DB_PASSWORD:popcorn-palace}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
+    producer:
+      # Wait for every in-sync replica, and let the broker drop duplicates caused
+      # by the producer's own retries, so one send is one message.
+      acks: all
+      properties:
+        enable.idempotence: true
+        # Fail within seconds when Kafka is unreachable instead of blocking for
+        # the default minute; the outbox relay simply tries again later.
+        max.block.ms: 5000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000
   jpa:
     open-in-view: false
     hibernate:
@@ -44,6 +57,18 @@ app:
     max-seats: 8
     # While a hold is being turned into a booking it is kept alive at least this long.
     confirm-grace: PT30S
+  events:
+    # Kafka topic that booking events (confirmed, cancelled) are published to.
+    booking-topic: popcorn.booking-events
+  outbox:
+    # How often events waiting in the outbox table are sent to Kafka.
+    relay-interval: ${OUTBOX_RELAY_INTERVAL:PT0.5S}
+    # Most events sent in one go.
+    batch-size: 100
+    # How long to wait for Kafka to acknowledge a batch before giving up on it.
+    send-timeout: PT10S
+    # Published events are kept this long, then deleted.
+    retention: P7D
   payments:
     # ISO 4217 code of the currency all prices are in.
     currency: ${PAYMENT_CURRENCY:USD}
