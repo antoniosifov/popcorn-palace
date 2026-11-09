@@ -251,7 +251,7 @@ class MovieApiTest extends ApiIntegrationTest
     void doesNotDeleteMovieWithShowtimes() throws Exception
     {
         long id = createMovie("Interstellar");
-        createShowtime(id, "Hall 1", "2030-01-15T18:00:00Z", "2030-01-15T20:49:00Z");
+        createShowtime(id, createHall("Hall 1"), "2030-01-15T18:00:00Z", "2030-01-15T20:49:00Z");
 
         mvc.perform(delete(MOVIES + "/{id}", id)).andExpect(problem(409, "MOVIE_HAS_SHOWTIMES"));
 

@@ -33,10 +33,21 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 public abstract class ApiIntegrationTest
 {
     protected static final String MOVIES = "/api/v1/movies";
+    protected static final String HALLS = "/api/v1/halls";
     protected static final String SHOWTIMES = "/api/v1/showtimes";
     protected static final String BOOKINGS = "/api/v1/bookings";
 
     protected static final UUID USER_ID = UUID.fromString("84438967-f68f-4fa0-b620-0f08217e76af");
+
+    /** The layout of halls made by {@link #createHall}: rows 1-2 have 5 STANDARD seats, row 3 has 4 VIP seats. */
+    protected static final String DEFAULT_SECTIONS = """
+            [{"rows": 2, "seatsPerRow": 5, "category": "STANDARD"},
+             {"rows": 1, "seatsPerRow": 4, "category": "VIP"}]""";
+    protected static final int DEFAULT_SEAT_COUNT = 14;
+
+    /** The prices of showtimes made by {@link #createShowtime}. */
+    protected static final String DEFAULT_PRICES = """
+            {"STANDARD": 14.50, "VIP": 22.00}""";
 
     @Autowired
     private WebApplicationContext context;
@@ -52,7 +63,7 @@ public abstract class ApiIntegrationTest
     {
         mvc = MockMvcBuilders.webAppContextSetup(context).build();
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("TRUNCATE TABLE bookings, showtimes, movies RESTART IDENTITY CASCADE");
+        jdbc.execute("TRUNCATE TABLE bookings, showtime_prices, showtimes, seats, halls, movies RESTART IDENTITY CASCADE");
     }
 
     // --- requests ---
@@ -81,23 +92,35 @@ public abstract class ApiIntegrationTest
                 """.formatted(title, genre, durationMinutes, rating, releaseYear);
     }
 
-    protected static String showtimeJson(long movieId, String theater, String startTime, String endTime)
+    protected static String hallJson(String name)
     {
-        return showtimeJson(movieId, theater, startTime, endTime, "14.50");
+        return hallJson(name, DEFAULT_SECTIONS);
     }
 
-    protected static String showtimeJson(long movieId, String theater, String startTime, String endTime, String price)
+    protected static String hallJson(String name, String sections)
     {
         return """
-                {"movieId": %d, "theater": "%s", "startTime": "%s", "endTime": "%s", "price": %s}
-                """.formatted(movieId, theater, startTime, endTime, price);
+                {"name": "%s", "sections": %s}
+                """.formatted(name, sections);
     }
 
-    protected static String bookingJson(long showtimeId, int seatNumber, UUID userId)
+    protected static String showtimeJson(long movieId, long hallId, String startTime, String endTime)
+    {
+        return showtimeJson(movieId, hallId, startTime, endTime, DEFAULT_PRICES);
+    }
+
+    protected static String showtimeJson(long movieId, long hallId, String startTime, String endTime, String prices)
     {
         return """
-                {"showtimeId": %d, "seatNumber": %d, "userId": "%s"}
-                """.formatted(showtimeId, seatNumber, userId);
+                {"movieId": %d, "hallId": %d, "startTime": "%s", "endTime": "%s", "prices": %s}
+                """.formatted(movieId, hallId, startTime, endTime, prices);
+    }
+
+    protected static String bookingJson(long showtimeId, long seatId, UUID userId)
+    {
+        return """
+                {"showtimeId": %d, "seatId": %d, "userId": "%s"}
+                """.formatted(showtimeId, seatId, userId);
     }
 
     // --- test data created through the API ---
@@ -107,17 +130,36 @@ public abstract class ApiIntegrationTest
         return idOf(postJson(MOVIES, movieJson(title)).andExpect(status().isCreated()));
     }
 
-    protected long createShowtime(long movieId, String theater, String startTime, String endTime) throws Exception
+    /** Creates a hall with the {@link #DEFAULT_SECTIONS} layout. */
+    protected long createHall(String name) throws Exception
     {
-        return idOf(postJson(SHOWTIMES, showtimeJson(movieId, theater, startTime, endTime)).andExpect(status().isCreated()));
+        return createHall(name, DEFAULT_SECTIONS);
     }
 
-    protected String createBooking(long showtimeId, int seatNumber) throws Exception
+    protected long createHall(String name, String sections) throws Exception
     {
-        String body = postJson(BOOKINGS, bookingJson(showtimeId, seatNumber, USER_ID))
+        return idOf(postJson(HALLS, hallJson(name, sections)).andExpect(status().isCreated()));
+    }
+
+    protected long createShowtime(long movieId, long hallId, String startTime, String endTime) throws Exception
+    {
+        return idOf(postJson(SHOWTIMES, showtimeJson(movieId, hallId, startTime, endTime)).andExpect(status().isCreated()));
+    }
+
+    protected String createBooking(long showtimeId, long seatId) throws Exception
+    {
+        String body = postJson(BOOKINGS, bookingJson(showtimeId, seatId, USER_ID))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
         return JsonPath.read(body, "$.id");
+    }
+
+    /** Looks up the id of the seat at the given position of a hall. */
+    protected long seatId(long hallId, int row, int number)
+    {
+        Long id = jdbc.queryForObject(
+                "SELECT id FROM seats WHERE hall_id = ? AND row_number = ? AND seat_number = ?", Long.class, hallId, row, number);
+        return id;
     }
 
     private static long idOf(ResultActions result) throws Exception

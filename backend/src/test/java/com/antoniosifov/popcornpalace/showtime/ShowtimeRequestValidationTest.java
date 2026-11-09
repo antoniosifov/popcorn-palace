@@ -1,5 +1,6 @@
 package com.antoniosifov.popcornpalace.showtime;
 
+import com.antoniosifov.popcornpalace.hall.SeatCategory;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -70,13 +72,28 @@ class ShowtimeRequestValidationTest
     }
 
     @Test
-    void normalizesTheaterName()
+    void rejectsNegativeAndTooPrecisePrices()
     {
-        assertThat(request(SIX_PM, NINE_PM).theater()).isEqualTo("Hall 1");
+        ShowtimeRequest request = new ShowtimeRequest(1L, 1L, SIX_PM, NINE_PM,
+                Map.of(SeatCategory.STANDARD, new BigDecimal("-1.00"), SeatCategory.VIP, new BigDecimal("22.005")));
+
+        assertThat(validator.validate(request))
+                .extracting(violation -> violation.getPropertyPath().toString())
+                .containsExactlyInAnyOrder("prices[STANDARD].<map value>", "prices[VIP].<map value>");
+    }
+
+    @Test
+    void rejectsMissingPrices()
+    {
+        ShowtimeRequest request = new ShowtimeRequest(1L, 1L, SIX_PM, NINE_PM, Map.of());
+
+        assertThat(validator.validate(request))
+                .extracting(violation -> violation.getPropertyPath().toString())
+                .containsExactly("prices");
     }
 
     private static ShowtimeRequest request(Instant startTime, Instant endTime)
     {
-        return new ShowtimeRequest(1L, "  Hall   1 ", startTime, endTime, new BigDecimal("14.50"));
+        return new ShowtimeRequest(1L, 1L, startTime, endTime, Map.of(SeatCategory.STANDARD, new BigDecimal("14.50")));
     }
 }
