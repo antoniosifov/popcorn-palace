@@ -1,16 +1,36 @@
+# Full local stack: `docker compose up --build`
+# Database only (run the API from your IDE): `docker compose up db`
+# Host ports can be changed with DB_PORT and API_PORT (see .env.example).
 services:
   db:
-    image: postgres
-    restart: always
+    image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: popcorn-palace
       POSTGRES_PASSWORD: popcorn-palace
       POSTGRES_DB: popcorn-palace
-   #  volumes:
-   #   - type: bind
-   #     source: ./data
-   #     target: /var/lib/postgresql/data --> in case u need to save data to local storage
     ports:
-      - target: 5432
-        published: 5432
-        protocol: tcp
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U popcorn-palace -d popcorn-palace"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/popcorn-palace
+      DB_USERNAME: popcorn-palace
+      DB_PASSWORD: popcorn-palace
+    ports:
+      - "${API_PORT:-8080}:8080"
+
+volumes:
+  db-data:

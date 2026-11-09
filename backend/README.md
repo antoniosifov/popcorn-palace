@@ -11,8 +11,8 @@ A movie ticket booking backend built with Java and Spring Boot. The API manages 
 - Seat booking with duplicate-seat prevention per showtime
 - Layered controller, service, repository, and persistence design
 - Dedicated validators and centralized JSON error responses
-- PostgreSQL for local application data and H2 for isolated tests
-- 26 automated tests covering the application context and service logic
+- PostgreSQL everywhere: local development, tests (Testcontainers) and Docker
+- 28 automated tests: service unit tests plus HTTP contract tests against a real PostgreSQL
 
 ## Architecture
 
@@ -32,11 +32,11 @@ The REST controllers translate HTTP requests into service operations. Services o
 
 | Area | Technologies |
 | --- | --- |
-| Runtime | Java 21, Spring Boot 3.4 |
+| Runtime | Java 21, Spring Boot 4.1 |
 | API | Spring Web, REST |
 | Persistence | Spring Data JPA, Hibernate, PostgreSQL |
-| Testing | JUnit 5, Mockito, H2 |
-| Tooling | Maven Wrapper, Docker Compose, Lombok |
+| Testing | JUnit 5, Mockito, Testcontainers (PostgreSQL) |
+| Tooling | Maven Wrapper, Docker, Docker Compose, GitHub Actions, Lombok |
 
 ## API
 
@@ -146,10 +146,10 @@ cd popcorn-palace
 ### 2. Start PostgreSQL
 
 ```bash
-docker compose -f ../compose.yml up -d
+docker compose -f ../compose.yml up -d db
 ```
 
-The compose file creates a local database named `popcorn-palace` on port `5432` using the development credentials configured in `src/main/resources/application.yaml`.
+The compose file creates a local database named `popcorn-palace` on port `5432`. The API reads its connection settings from `DB_URL`, `DB_USERNAME` and `DB_PASSWORD` and defaults to this database. To run the database and the API together in Docker, use `docker compose up --build` from the repository root.
 
 ### 3. Start the API
 
@@ -167,27 +167,27 @@ Windows:
 
 ## Tests
 
-Tests use an in-memory H2 database in PostgreSQL compatibility mode, so PostgreSQL does not need to be running.
+The context and HTTP contract tests start a disposable PostgreSQL container through Testcontainers, so Docker must be running. Service tests are plain unit tests with mocked repositories.
 
 macOS/Linux:
 
 ```bash
-./mvnw test
+./mvnw verify
 ```
 
 Windows:
 
 ```powershell
-.\mvnw.cmd test
+.\mvnw.cmd verify
 ```
 
-Current suite: **26 tests passing** across application startup, movie services, showtime services, and booking services.
+Current suite: **28 tests passing** across application startup, the HTTP contract, movie services, showtime services, and booking services.
 
 ## Project structure
 
 ```text
 src/
-├── main/java/com/att/tdp/popcorn_palace/
+├── main/java/com/antoniosifov/popcornpalace/
 │   ├── controller/    # HTTP endpoints
 │   ├── service/       # Business rules and transactions
 │   ├── validation/    # Input and domain validation
@@ -195,9 +195,7 @@ src/
 │   ├── model/         # Persistence entities
 │   ├── dto/           # API response models
 │   └── errors/        # Structured error handling
-└── test/
-    ├── java/          # Service and context tests
-    └── resources/     # Isolated H2 configuration
+└── test/java/         # Service unit tests and the Testcontainers context test
 ```
 
 ## Related repository
