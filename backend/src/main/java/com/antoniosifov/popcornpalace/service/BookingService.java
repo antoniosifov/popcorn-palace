@@ -9,8 +9,6 @@ import com.antoniosifov.popcornpalace.validation.BookingValidator;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 
-import java.util.UUID;
-
 @Service
 @Transactional
 public class BookingService
@@ -36,7 +34,6 @@ public class BookingService
         if (seatTaken) {
             throw new IllegalArgumentException("Seat " + booking.getSeatNumber() + " is already booked for this showtime");
         }
-        //booking.setId(UUID.randomUUID());
         booking.setShowtime(showtime);
         return bookingRepository.save(booking);
     }

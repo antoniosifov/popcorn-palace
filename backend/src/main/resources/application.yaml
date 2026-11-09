@@ -5,16 +5,16 @@ spring:
   application:
     name: popcorn-palace
   datasource:
-    url: jdbc:postgresql://localhost:5432/popcorn-palace
-    username: popcorn-palace
-    password: popcorn-palace
-    driverClassName: org.postgresql.Driver
-    platform: postgres
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/popcorn-palace}
+    username: ${DB_USERNAME:popcorn-palace}
+    password: ${DB_PASSWORD:popcorn-palace}
   jpa:
-    database: POSTGRESQL
-    show-sql: true
+    open-in-view: false
     hibernate:
       ddl-auto: update
-  sql:
-    init:
-      mode: always
+  jackson:
+    deserialization:
+      # Requests still bind straight to JPA entities, and clients send partial
+      # objects such as {"movie": {"id": 1}}. Jackson 3 rejects the missing
+      # primitive fields by default. Remove once request DTOs replace entities.
+      fail-on-null-for-primitives: false
