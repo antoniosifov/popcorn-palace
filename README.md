@@ -21,6 +21,11 @@ docker compose up --build
 The API listens on http://localhost:8080. Open http://localhost:8080/swagger-ui.html
 to browse and call every endpoint from the browser.
 
+Browsing is public. To manage the catalog, log in at `POST /api/v1/auth/login` as the
+development administrator (`admin@popcorn.local` / `admin-dev-password`), press
+**Authorize** in Swagger UI and paste the `accessToken`. To book seats, register a
+customer at `POST /api/v1/auth/register`.
+
 If port 8080 or 5432 is taken, copy `.env.example` to `.env` and change the ports.
 
 ### Run the API from your IDE instead
