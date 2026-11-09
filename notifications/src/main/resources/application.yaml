@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: popcorn-palace-notifications
+  main:
+    # No HTTP server: this service only consumes from Kafka.
+    web-application-type: none
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
+    consumer:
+      # All instances of this service share the group, so each event is handled by one of them.
+      group-id: notifications
+      # A brand-new group starts from the oldest event still in the topic, so
+      # nothing published before the first start is skipped.
+      auto-offset-reset: earliest
+    listener:
+      # Commit the position after each event: a crash re-delivers at most that one.
+      ack-mode: record
+    producer:
+      # Used only to move events that cannot be processed to the dead-letter topic.
+      acks: all
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2s
+      connect-timeout: 2s
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    properties:
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
+
+app:
+  events:
+    # Kafka topic the booking API publishes to.
+    booking-topic: popcorn.booking-events
+  notifications:
+    from: ${MAIL_FROM:Popcorn Palace <tickets@popcorn-palace.local>}
+    # Showtimes are printed in this time zone in emails.
+    time-zone: ${NOTIFICATION_TIME_ZONE:UTC}
+    # How long an event is remembered as handled, to ignore redeliveries.
+    processed-ttl: P7D
+    # A failed event is retried this many times, this far apart, before it
+    # is moved to the dead-letter topic.
+    max-retries: 3
+    retry-interval: PT2S
