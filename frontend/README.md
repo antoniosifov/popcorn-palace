@@ -1,5 +1,7 @@
 # Popcorn Palace Frontend
 
+> **Legacy client.** These static pages were written for the first version of the API. They are not compatible with the current `/api/v1` backend and are kept only until the Next.js + TypeScript client replaces them. To explore the API today, use Swagger UI at http://localhost:8080/swagger-ui.html.
+
 A responsive browser interface for managing the Popcorn Palace movie catalog, showtimes, and seat bookings. It connects to the companion [Spring Boot REST API](../backend/README.md) and provides a complete UI for the assignment's core workflows.
 
 ## Features
