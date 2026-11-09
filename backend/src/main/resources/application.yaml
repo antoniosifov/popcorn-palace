@@ -69,6 +69,11 @@ app:
     send-timeout: PT10S
     # Published events are kept this long, then deleted.
     retention: P7D
+  seatmap:
+    # A browser's live seat stream is closed after this long; the browser reconnects by itself.
+    stream-timeout: ${SEATMAP_STREAM_TIMEOUT:PT30M}
+    # A comment is sent to every open stream this often, to keep connections alive.
+    heartbeat-interval: ${SEATMAP_HEARTBEAT_INTERVAL:PT15S}
   payments:
     # ISO 4217 code of the currency all prices are in.
     currency: ${PAYMENT_CURRENCY:USD}

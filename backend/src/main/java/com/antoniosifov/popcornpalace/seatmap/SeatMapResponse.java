@@ -1,6 +1,7 @@
 package com.antoniosifov.popcornpalace.seatmap;
 
 import com.antoniosifov.popcornpalace.hall.SeatCategory;
+import com.antoniosifov.popcornpalace.hall.SeatStatus;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -31,15 +32,5 @@ public record SeatMapResponse(
     public record SeatView(Long seatId, int number, SeatCategory category, BigDecimal price,
                            SeatStatus status, boolean heldByMe)
     {
-    }
-
-    public enum SeatStatus
-    {
-        /** Free to hold. */
-        AVAILABLE,
-        /** Temporarily reserved by a customer who is checking out; becomes available again if they do not finish. */
-        HELD,
-        /** Sold. */
-        BOOKED
     }
 }

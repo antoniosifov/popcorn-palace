@@ -15,6 +15,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Seat holds as Redis keys with a time to live. For a showtime {@code 42}:
@@ -120,6 +122,22 @@ public class RedisSeatHoldStore implements SeatHoldStore
             }
         }
         return holders;
+    }
+
+    /** A seat key taken apart: which seat of which showtime it stands for. */
+    public record SeatKey(long showtimeId, long seatId)
+    {
+    }
+
+    private static final Pattern SEAT_KEY = Pattern.compile("hold:\\{(\\d+)}:seat:(\\d+)");
+
+    /** Recognizes a seat key, for example in an expired-key notification from Redis. */
+    public static Optional<SeatKey> parseSeatKey(String key)
+    {
+        Matcher matcher = SEAT_KEY.matcher(key);
+        return matcher.matches()
+                ? Optional.of(new SeatKey(Long.parseLong(matcher.group(1)), Long.parseLong(matcher.group(2))))
+                : Optional.empty();
     }
 
     /** Key order expected by every hold script: user key, record key, then the seat keys. */

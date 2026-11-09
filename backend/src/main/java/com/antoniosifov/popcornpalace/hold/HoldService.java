@@ -5,12 +5,14 @@ import com.antoniosifov.popcornpalace.common.error.ApiException;
 import com.antoniosifov.popcornpalace.common.error.ErrorCode;
 import com.antoniosifov.popcornpalace.hall.Seat;
 import com.antoniosifov.popcornpalace.hall.SeatRepository;
+import com.antoniosifov.popcornpalace.hall.SeatStatusChanged;
 import com.antoniosifov.popcornpalace.hold.HoldRecord.HeldSeat;
 import com.antoniosifov.popcornpalace.hold.SeatHoldStore.AcquireResult;
 import com.antoniosifov.popcornpalace.security.CurrentUser;
 import com.antoniosifov.popcornpalace.showtime.Showtime;
 import com.antoniosifov.popcornpalace.showtime.ShowtimeRepository;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,16 +45,19 @@ public class HoldService
     private final SeatRepository seatRepository;
     private final BookingRepository bookingRepository;
     private final HoldProperties properties;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
 
     public HoldService(SeatHoldStore holdStore, ShowtimeRepository showtimeRepository, SeatRepository seatRepository,
-                       BookingRepository bookingRepository, HoldProperties properties, Clock clock)
+                       BookingRepository bookingRepository, HoldProperties properties,
+                       ApplicationEventPublisher events, Clock clock)
     {
         this.holdStore = holdStore;
         this.showtimeRepository = showtimeRepository;
         this.seatRepository = seatRepository;
         this.bookingRepository = bookingRepository;
         this.properties = properties;
+        this.events = events;
         this.clock = clock;
     }
 
@@ -102,6 +107,9 @@ public class HoldService
             throw ApiException.conflict(ErrorCode.SEAT_ALREADY_BOOKED, "Some of the seats are already booked")
                     .with("seatIds", alreadySold.stream().sorted().toList());
         }
+
+        // Tell the browsers looking at this showtime.
+        events.publishEvent(SeatStatusChanged.held(showtimeId, hold.seatIds(), hold.id()));
         return HoldResponse.from(hold);
     }
 
@@ -125,6 +133,7 @@ public class HoldService
                 throw notFound();
             }
             holdStore.release(hold);
+            events.publishEvent(SeatStatusChanged.available(showtimeId, hold.seatIds()));
         });
     }
 

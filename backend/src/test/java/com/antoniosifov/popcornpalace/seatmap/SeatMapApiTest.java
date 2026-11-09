@@ -2,6 +2,7 @@ package com.antoniosifov.popcornpalace.seatmap;
 
 import com.antoniosifov.popcornpalace.booking.BookingRepository;
 import com.antoniosifov.popcornpalace.hall.SeatRepository;
+import com.antoniosifov.popcornpalace.hall.SeatStatus;
 import com.antoniosifov.popcornpalace.hold.HoldRecord;
 import com.antoniosifov.popcornpalace.hold.SeatHoldStore;
 import com.antoniosifov.popcornpalace.showtime.ShowtimeRepository;
@@ -132,7 +133,7 @@ class SeatMapApiTest extends ApiIntegrationTest
 
         assertThat(seatMap.totalSeats()).isEqualTo(DEFAULT_SEAT_COUNT);
         assertThat(seatMap.availableSeats()).isEqualTo(DEFAULT_SEAT_COUNT - 1);
-        assertThat(seatMap.rows().get(0).seats().get(1).status()).isEqualTo(SeatMapResponse.SeatStatus.BOOKED);
+        assertThat(seatMap.rows().get(0).seats().get(1).status()).isEqualTo(SeatStatus.BOOKED);
     }
 
     /** A hold store that behaves like Redis being unreachable. */
