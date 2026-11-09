@@ -30,16 +30,42 @@ jobs:
           cache: maven
           cache-dependency-path: backend/pom.xml
 
-      # Integration tests start PostgreSQL through Testcontainers;
-      # the runner already has Docker available.
+      # Integration tests start PostgreSQL, Redis and Kafka through
+      # Testcontainers; the runner already has Docker available.
+      - name: Build and test
+        run: ./mvnw -B -ntp verify
+
+  notifications:
+    name: Notifications build and tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: notifications
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+          cache-dependency-path: notifications/pom.xml
+
       - name: Build and test
         run: ./mvnw -B -ntp verify
 
   docker:
-    name: Backend Docker image
+    name: Docker images
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
-      - name: Build image
+      - name: Build API image
         run: docker build -t popcorn-palace-api ./backend
+
+      - name: Build notifications image
+        run: docker build -t popcorn-palace-notifications ./notifications
+
+      # Catches mistakes in compose.yml without starting anything.
+      - name: Validate compose file
+        run: docker compose config --quiet
