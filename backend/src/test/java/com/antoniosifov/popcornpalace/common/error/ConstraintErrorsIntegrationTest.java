@@ -76,11 +76,11 @@ class ConstraintErrorsIntegrationTest extends ApiIntegrationTest
         Seat seat = seatRepository.findById(seatId(hallId, 1, 1)).orElseThrow();
         Instant now = Instant.parse("2030-01-01T00:00:00Z");
 
-        Booking first = new Booking(showtime, CUSTOMER_ID, now);
+        Booking first = new Booking(showtime, CUSTOMER_ID, null, now);
         first.addSeat(seat, new BigDecimal("14.50"));
         bookingRepository.saveAndFlush(first);
 
-        Booking second = new Booking(showtime, OTHER_CUSTOMER_ID, now);
+        Booking second = new Booking(showtime, OTHER_CUSTOMER_ID, null, now);
         second.addSeat(seat, new BigDecimal("14.50"));
         Throwable thrown = catchThrowable(() -> bookingRepository.saveAndFlush(second));
 

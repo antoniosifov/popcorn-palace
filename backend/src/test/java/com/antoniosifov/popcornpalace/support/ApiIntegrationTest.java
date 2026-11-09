@@ -2,6 +2,7 @@ package com.antoniosifov.popcornpalace.support;
 
 import com.antoniosifov.popcornpalace.TestcontainersConfiguration;
 import com.antoniosifov.popcornpalace.auth.TokenService;
+import com.antoniosifov.popcornpalace.payment.FakePaymentProvider;
 import com.antoniosifov.popcornpalace.user.Role;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
@@ -81,6 +82,10 @@ public abstract class ApiIntegrationTest
     @Autowired
     protected StringRedisTemplate redis;
 
+    /** The sandbox payment provider; tests read what it "charged" and make it fail. */
+    @Autowired
+    protected FakePaymentProvider paymentProvider;
+
     /** Sends requests as the administrator by default. */
     protected MockMvc mvc;
     /** Sends requests with no credentials. */
@@ -95,7 +100,8 @@ public abstract class ApiIntegrationTest
     void resetState()
     {
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("TRUNCATE TABLE booking_seats, bookings, showtime_prices, showtimes, seats, halls, movies, users RESTART IDENTITY CASCADE");
+        jdbc.execute("TRUNCATE TABLE booking_seats, bookings, payments, showtime_prices, showtimes, seats, halls, movies, users RESTART IDENTITY CASCADE");
+        paymentProvider.reset();
         // Seat holds and rate-limit counters live in Redis.
         redis.execute((RedisCallback<Void>) connection -> {
             connection.serverCommands().flushDb();
@@ -232,7 +238,7 @@ public abstract class ApiIntegrationTest
         return JsonPath.read(body, "$.id");
     }
 
-    /** Confirms a hold and returns the id of the booking it became. */
+    /** Pays for a hold with a card that works and returns the id of the booking it became. */
     protected String confirmHold(String token, long showtimeId, String holdId) throws Exception
     {
         String body = confirm(token, showtimeId, holdId)
@@ -241,13 +247,23 @@ public abstract class ApiIntegrationTest
         return JsonPath.read(body, "$.id");
     }
 
+    /** Pays for a hold with a card that works, as a fresh purchase attempt (a new idempotency key). */
     protected ResultActions confirm(String token, long showtimeId, String holdId) throws Exception
     {
-        return mvc.perform(post(holdsUrl(showtimeId) + "/" + holdId + "/confirm")
-                .header(HttpHeaders.AUTHORIZATION, bearer(token)));
+        return confirm(token, showtimeId, holdId, UUID.randomUUID().toString(), FakePaymentProvider.TOKEN_OK);
     }
 
-    /** Books the seats as the customer (hold, then confirm) and returns the booking id. */
+    protected ResultActions confirm(String token, long showtimeId, String holdId,
+                                    String idempotencyKey, String paymentToken) throws Exception
+    {
+        return mvc.perform(post(holdsUrl(showtimeId) + "/" + holdId + "/confirm")
+                .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                .header("Idempotency-Key", idempotencyKey)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"paymentToken\": \"%s\"}".formatted(paymentToken)));
+    }
+
+    /** Books the seats as the customer (hold, then pay) and returns the booking id. */
     protected String createBooking(long showtimeId, long... seatIds) throws Exception
     {
         return createBookingAs(customerToken, showtimeId, seatIds);

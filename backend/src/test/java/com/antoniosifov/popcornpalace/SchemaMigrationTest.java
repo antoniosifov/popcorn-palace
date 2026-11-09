@@ -111,6 +111,23 @@ class SchemaMigrationTest
                         Map.of("booking", "4", "hall", "IMAX", "seat_row", 1, "seat", 20, "price", "25.00", "total", "25.00"));
         assertThat(jdbc.queryForObject("SELECT count(*) FROM booking_seats", Long.class)).isEqualTo(4);
 
+        // V5: bookings from before payments are confirmed, have no payment, and their seats are active.
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM bookings WHERE status = 'CONFIRMED' AND payment_id IS NULL AND cancelled_at IS NULL",
+                Long.class)).isEqualTo(4);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM booking_seats WHERE active", Long.class)).isEqualTo(4);
+        // A seat sold before the migration still cannot be sold again ...
+        assertThatThrownBy(() -> jdbc.update("""
+                INSERT INTO booking_seats (booking_id, showtime_id, hall_id, seat_id, price)
+                SELECT booking_id, showtime_id, hall_id, seat_id, price FROM booking_seats LIMIT 1"""))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("uq_booking_seats_showtime_seat");
+        // ... unless that sale is no longer active.
+        jdbc.update("UPDATE booking_seats SET active = false WHERE id = (SELECT min(id) FROM booking_seats)");
+        assertThat(jdbc.update("""
+                INSERT INTO booking_seats (booking_id, showtime_id, hall_id, seat_id, price)
+                SELECT booking_id, showtime_id, hall_id, seat_id, price FROM booking_seats ORDER BY id LIMIT 1""")).isEqualTo(1);
+
         // The columns replaced by the new model are gone.
         List<String> columns = jdbc.queryForList("""
                 SELECT table_name || '.' || column_name
@@ -146,7 +163,7 @@ class SchemaMigrationTest
         migrateToLatest();
 
         assertThat(jdbc.queryForObject(
-                "SELECT count(*) FROM flyway_schema_history WHERE success", Long.class)).isGreaterThanOrEqualTo(4);
+                "SELECT count(*) FROM flyway_schema_history WHERE success", Long.class)).isGreaterThanOrEqualTo(5);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM halls", Long.class)).isZero();
     }
 

@@ -105,7 +105,7 @@ class HoldConcurrencyTest extends ApiIntegrationTest
         }
     }
 
-    @DisplayName("Ten simultaneous confirmations of one hold (an impatient double click) create one booking")
+    @DisplayName("Ten simultaneous payments for one hold (an impatient double click) charge once and create one booking")
     @Test
     void confirmingTheSameHoldManyTimesBooksOnce() throws Exception
     {
@@ -116,8 +116,10 @@ class HoldConcurrencyTest extends ApiIntegrationTest
                 () -> confirm(token, showtimeId, holdId).andReturn().getResponse().getStatus());
 
         assertThat(statuses).filteredOn(status -> status == 201).hasSize(1);
-        // The others either found the hold already gone or lost on the database constraint.
+        // The others were told a payment is already in progress, or found the hold already gone.
         assertThat(statuses).allMatch(status -> status == 201 || status == 404 || status == 409);
+        // And, most importantly, the customer was charged once.
+        assertThat(paymentProvider.chargeCount()).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM bookings", Long.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM booking_seats", Long.class)).isEqualTo(2);
     }
