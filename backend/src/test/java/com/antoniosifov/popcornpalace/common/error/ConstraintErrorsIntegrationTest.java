@@ -76,9 +76,9 @@ class ConstraintErrorsIntegrationTest extends ApiIntegrationTest
         Seat seat = seatRepository.findById(seatId(hallId, 1, 1)).orElseThrow();
         Instant now = Instant.parse("2030-01-01T00:00:00Z");
 
-        bookingRepository.saveAndFlush(new Booking(showtime, seat, USER_ID, new BigDecimal("14.50"), now));
+        bookingRepository.saveAndFlush(new Booking(showtime, seat, CUSTOMER_ID, new BigDecimal("14.50"), now));
         Throwable thrown = catchThrowable(() ->
-                bookingRepository.saveAndFlush(new Booking(showtime, seat, USER_ID, new BigDecimal("14.50"), now)));
+                bookingRepository.saveAndFlush(new Booking(showtime, seat, OTHER_CUSTOMER_ID, new BigDecimal("14.50"), now)));
 
         assertThat(thrown).isInstanceOf(DataAccessException.class);
         assertThat(ConstraintErrors.resolve(thrown))

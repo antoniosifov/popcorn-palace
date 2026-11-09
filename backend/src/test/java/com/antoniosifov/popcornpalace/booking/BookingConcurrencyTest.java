@@ -6,7 +6,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -28,7 +27,7 @@ class BookingConcurrencyTest extends ApiIntegrationTest
         long seatId = seatId(hallId, 1, 3);
 
         List<String> results = SimultaneousRequests.run(SIMULTANEOUS_REQUESTS, () -> {
-            var response = postJson(BOOKINGS, bookingJson(showtimeId, seatId, UUID.randomUUID()))
+            var response = postJsonAs(customerToken, BOOKINGS, bookingJson(showtimeId, seatId))
                     .andReturn().getResponse();
             return response.getStatus() + " " + response.getContentAsString();
         });

@@ -52,9 +52,9 @@ class SchemaMigrationTest
         jdbc = new JdbcTemplate(dataSource);
     }
 
-    @DisplayName("V2 turns theaters into halls with seats and keeps showtimes, prices and bookings")
+    @DisplayName("Data from V1 is carried forward: theaters become halls with seats; showtimes, prices, bookings and their users are kept")
     @Test
-    void v2MigratesExistingData()
+    void migratesExistingDataFromV1()
     {
         migrateTo("1");
         jdbc.update("""
@@ -115,6 +115,18 @@ class SchemaMigrationTest
                 WHERE table_schema = 'public' AND table_name IN ('showtimes', 'bookings')""", String.class);
         assertThat(columns).doesNotContain("showtimes.theater", "showtimes.price", "bookings.seat_number");
 
+        // V3: the user id carried by the old bookings became one placeholder account
+        // that cannot be logged into, and bookings now reference accounts.
+        assertThat(jdbc.queryForList("SELECT id::text AS id, email, password_hash, role FROM users"))
+                .containsExactly(Map.of(
+                        "id", "84438967-f68f-4fa0-b620-0f08217e76af",
+                        "email", "legacy-84438967-f68f-4fa0-b620-0f08217e76af@placeholder.invalid",
+                        "password_hash", "!",
+                        "role", "CUSTOMER"));
+        assertThatThrownBy(() -> jdbc.update("UPDATE bookings SET user_id = '00000000-0000-0000-0000-00000000dead'"))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("fk_bookings_user");
+
         // And the migrated data is protected by the new rules.
         assertThatThrownBy(() -> jdbc.update("""
                 INSERT INTO showtimes (movie_id, hall_id, start_time, end_time)
@@ -130,7 +142,7 @@ class SchemaMigrationTest
         migrateToLatest();
 
         assertThat(jdbc.queryForObject(
-                "SELECT count(*) FROM flyway_schema_history WHERE success", Long.class)).isGreaterThanOrEqualTo(2);
+                "SELECT count(*) FROM flyway_schema_history WHERE success", Long.class)).isGreaterThanOrEqualTo(3);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM halls", Long.class)).isZero();
     }
 

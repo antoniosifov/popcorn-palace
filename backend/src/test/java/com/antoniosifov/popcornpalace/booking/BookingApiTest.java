@@ -7,6 +7,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.test.json.JsonCompareMode;
 
 import java.util.UUID;
@@ -45,23 +46,26 @@ class BookingApiTest extends ApiIntegrationTest
     {
         long seatId = seatId(hallId, 2, 3);
 
-        String created = postJson(BOOKINGS, bookingJson(showtimeId, seatId, USER_ID))
+        String created = postJsonAs(customerToken, BOOKINGS, bookingJson(showtimeId, seatId))
                 .andExpect(status().isCreated())
                 .andExpect(header().string("Location", containsString("/api/v1/bookings/")))
                 .andExpect(jsonPath("$.id").isString())
                 .andExpect(jsonPath("$.showtimeId").value(showtimeId))
+                .andExpect(jsonPath("$.movieTitle").value("Interstellar"))
+                .andExpect(jsonPath("$.hallName").value("Hall 1"))
+                .andExpect(jsonPath("$.startTime").value(START))
                 .andExpect(jsonPath("$.seatId").value(seatId))
                 .andExpect(jsonPath("$.row").value(2))
                 .andExpect(jsonPath("$.seatNumber").value(3))
                 .andExpect(jsonPath("$.category").value("STANDARD"))
                 .andExpect(jsonPath("$.price").value(14.5))
-                .andExpect(jsonPath("$.userId").value(USER_ID.toString()))
+                .andExpect(jsonPath("$.userId").value(CUSTOMER_ID.toString()))
                 .andExpect(jsonPath("$.createdAt").isString())
                 .andReturn().getResponse().getContentAsString();
 
         // Fetching the booking returns exactly what the create call returned.
         String bookingId = JsonPath.read(created, "$.id");
-        mvc.perform(get(BOOKINGS + "/{id}", bookingId))
+        mvc.perform(get(BOOKINGS + "/{id}", bookingId).header(HttpHeaders.AUTHORIZATION, bearer(customerToken)))
                 .andExpect(status().isOk())
                 .andExpect(content().json(created, JsonCompareMode.STRICT));
     }
@@ -70,7 +74,7 @@ class BookingApiTest extends ApiIntegrationTest
     @Test
     void chargesThePriceOfTheSeatCategory() throws Exception
     {
-        postJson(BOOKINGS, bookingJson(showtimeId, seatId(hallId, 3, 1), USER_ID))
+        postJsonAs(customerToken, BOOKINGS, bookingJson(showtimeId, seatId(hallId, 3, 1)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.category").value("VIP"))
                 .andExpect(jsonPath("$.price").value(22.0));
@@ -89,7 +93,7 @@ class BookingApiTest extends ApiIntegrationTest
         mvc.perform(get(BOOKINGS + "/{id}", bookingId))
                 .andExpect(jsonPath("$.price").value(14.5));
 
-        postJson(BOOKINGS, bookingJson(showtimeId, seatId(hallId, 1, 2), USER_ID))
+        postJsonAs(customerToken, BOOKINGS, bookingJson(showtimeId, seatId(hallId, 1, 2)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.price").value(19.9));
     }
@@ -101,7 +105,7 @@ class BookingApiTest extends ApiIntegrationTest
         long seatId = seatId(hallId, 1, 2);
         createBooking(showtimeId, seatId);
 
-        postJson(BOOKINGS, bookingJson(showtimeId, seatId, UUID.randomUUID()))
+        postJsonAs(otherCustomerToken, BOOKINGS, bookingJson(showtimeId, seatId))
                 .andExpect(problem(409, "SEAT_ALREADY_BOOKED"))
                 .andExpect(jsonPath("$.detail").value("Row 1 seat 2 is already booked for this showtime"));
     }
@@ -114,7 +118,7 @@ class BookingApiTest extends ApiIntegrationTest
         long seatId = seatId(hallId, 1, 2);
         createBooking(showtimeId, seatId);
 
-        postJson(BOOKINGS, bookingJson(laterShowtimeId, seatId, USER_ID))
+        postJsonAs(customerToken, BOOKINGS, bookingJson(laterShowtimeId, seatId))
                 .andExpect(status().isCreated());
     }
 
@@ -124,7 +128,7 @@ class BookingApiTest extends ApiIntegrationTest
     {
         long otherHallId = createHall("Hall 2");
 
-        postJson(BOOKINGS, bookingJson(showtimeId, seatId(otherHallId, 1, 1), USER_ID))
+        postJsonAs(customerToken, BOOKINGS, bookingJson(showtimeId, seatId(otherHallId, 1, 1)))
                 .andExpect(problem(400, "SEAT_NOT_IN_HALL"));
     }
 
@@ -133,9 +137,9 @@ class BookingApiTest extends ApiIntegrationTest
     void databaseRejectsDuplicateSeat()
     {
         long seatId = seatId(hallId, 1, 2);
-        jdbc.update(INSERT_BOOKING, UUID.randomUUID(), showtimeId, hallId, seatId, USER_ID);
+        jdbc.update(INSERT_BOOKING, UUID.randomUUID(), showtimeId, hallId, seatId, CUSTOMER_ID);
 
-        assertThatThrownBy(() -> jdbc.update(INSERT_BOOKING, UUID.randomUUID(), showtimeId, hallId, seatId, USER_ID))
+        assertThatThrownBy(() -> jdbc.update(INSERT_BOOKING, UUID.randomUUID(), showtimeId, hallId, seatId, OTHER_CUSTOMER_ID))
                 .isInstanceOf(DuplicateKeyException.class)
                 .hasMessageContaining("uq_bookings_showtime_seat");
     }
@@ -148,12 +152,12 @@ class BookingApiTest extends ApiIntegrationTest
         long foreignSeatId = seatId(otherHallId, 1, 1);
 
         // Claiming the seat is in the showtime's hall: the seat's own hall disagrees.
-        assertThatThrownBy(() -> jdbc.update(INSERT_BOOKING, UUID.randomUUID(), showtimeId, hallId, foreignSeatId, USER_ID))
+        assertThatThrownBy(() -> jdbc.update(INSERT_BOOKING, UUID.randomUUID(), showtimeId, hallId, foreignSeatId, CUSTOMER_ID))
                 .isInstanceOf(DataIntegrityViolationException.class)
                 .hasMessageContaining("fk_bookings_seat");
 
         // Claiming the showtime runs in the seat's hall: the showtime's own hall disagrees.
-        assertThatThrownBy(() -> jdbc.update(INSERT_BOOKING, UUID.randomUUID(), showtimeId, otherHallId, foreignSeatId, USER_ID))
+        assertThatThrownBy(() -> jdbc.update(INSERT_BOOKING, UUID.randomUUID(), showtimeId, otherHallId, foreignSeatId, CUSTOMER_ID))
                 .isInstanceOf(DataIntegrityViolationException.class)
                 .hasMessageContaining("fk_bookings_showtime");
     }
@@ -162,21 +166,31 @@ class BookingApiTest extends ApiIntegrationTest
     @Test
     void rejectsUnknownShowtimeOrSeat() throws Exception
     {
-        postJson(BOOKINGS, bookingJson(999, seatId(hallId, 1, 1), USER_ID))
+        postJsonAs(customerToken, BOOKINGS, bookingJson(999, seatId(hallId, 1, 1)))
                 .andExpect(problem(404, "SHOWTIME_NOT_FOUND"));
 
-        postJson(BOOKINGS, bookingJson(showtimeId, 99999, USER_ID))
+        postJsonAs(customerToken, BOOKINGS, bookingJson(showtimeId, 99999))
                 .andExpect(problem(404, "SEAT_NOT_FOUND"));
     }
 
-    @DisplayName("A booking without a user or seat is rejected")
+    @DisplayName("A booking without a seat is rejected")
     @Test
     void rejectsMissingFields() throws Exception
     {
-        postJson(BOOKINGS, "{\"showtimeId\": %d}".formatted(showtimeId))
+        postJsonAs(customerToken, BOOKINGS, "{\"showtimeId\": %d}".formatted(showtimeId))
                 .andExpect(problem(400, "VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.errors[0].field").value("seatId"))
-                .andExpect(jsonPath("$.errors[1].field").value("userId"));
+                .andExpect(jsonPath("$.errors[0].field").value("seatId"));
+    }
+
+    @DisplayName("The database itself rejects a booking for an account that does not exist")
+    @Test
+    void databaseRejectsUnknownUser()
+    {
+        long seatId = seatId(hallId, 1, 1);
+
+        assertThatThrownBy(() -> jdbc.update(INSERT_BOOKING, UUID.randomUUID(), showtimeId, hallId, seatId, UUID.randomUUID()))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("fk_bookings_user");
     }
 
     @DisplayName("A showtime that has already started can no longer be booked")
@@ -185,7 +199,7 @@ class BookingApiTest extends ApiIntegrationTest
     {
         long pastShowtimeId = createShowtime(movieId, hallId, "2020-01-15T18:00:00Z", "2020-01-15T20:00:00Z");
 
-        postJson(BOOKINGS, bookingJson(pastShowtimeId, seatId(hallId, 1, 1), USER_ID))
+        postJsonAs(customerToken, BOOKINGS, bookingJson(pastShowtimeId, seatId(hallId, 1, 1)))
                 .andExpect(problem(409, "SHOWTIME_ALREADY_STARTED"));
     }
 
@@ -193,7 +207,7 @@ class BookingApiTest extends ApiIntegrationTest
     @Test
     void getUnknownBooking() throws Exception
     {
-        mvc.perform(get(BOOKINGS + "/{id}", UUID.randomUUID()))
+        mvc.perform(get(BOOKINGS + "/{id}", UUID.randomUUID()).header(HttpHeaders.AUTHORIZATION, bearer(customerToken)))
                 .andExpect(problem(404, "BOOKING_NOT_FOUND"));
 
         mvc.perform(get(BOOKINGS + "/not-a-uuid"))

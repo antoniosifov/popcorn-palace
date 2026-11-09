@@ -14,12 +14,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Errors raised by the framework itself use the same response format as business errors. */
 class ErrorResponseApiTest extends ApiIntegrationTest
 {
-    @DisplayName("An unknown path returns a 404 problem response")
+    @DisplayName("An unknown path returns a 404 problem response, but only to a logged-in caller")
     @Test
     void unknownPath() throws Exception
     {
         mvc.perform(get("/api/v1/popcorn"))
                 .andExpect(problem(404, "NOT_FOUND"));
+
+        // Without credentials the API does not reveal which paths exist.
+        anonymous.perform(get("/api/v1/popcorn"))
+                .andExpect(problem(401, "UNAUTHENTICATED"));
     }
 
     @DisplayName("An unsupported HTTP method returns a 405 problem response")
@@ -42,7 +46,7 @@ class ErrorResponseApiTest extends ApiIntegrationTest
     @Test
     void openApiDescription() throws Exception
     {
-        mvc.perform(get("/v3/api-docs"))
+        anonymous.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.info.title").value("Popcorn Palace API"))
                 .andExpect(jsonPath("$.paths['/api/v1/movies']").exists())
