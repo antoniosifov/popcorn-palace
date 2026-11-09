@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Showtimes - Popcorn Palace</title>
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="css/showtime.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <nav class="navbar" aria-label="Primary navigation">
+    <ul>
+      <li><a href="index.html">Home</a></li>
+      <li><a href="movie.html">Movies</a></li>
+      <li><a href="showtime.html" class="active" aria-current="page">Showtimes</a></li>
+      <li><a href="booking.html">Bookings</a></li>
+    </ul>
+  </nav>
+
+  <header><h1>Showtimes</h1></header>
+
+  <main>
+    <section id="showtime-list">
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Movie</th>
+              <th>Theater</th>
+              <th>Price</th>
+              <th>Start Time</th>
+              <th>End Time</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="showtime-table-body">
+            <tr><td colspan="7">Loading showtimes...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="get-by-id">
+      <h2>Get Showtime by ID</h2>
+      <input type="number" id="get-id-input" placeholder="Enter Showtime ID" min="1" />
+      <button type="button" id="get-showtime-button">Get</button>
+      <pre id="showtime-by-id-result" aria-live="polite"></pre>
+    </section>
+
+    <section id="add-showtime">
+      <h2>Add Showtime</h2>
+      <form id="add-form">
+        <select id="add-movieId" required>
+          <option value="">Select Movie</option>
+        </select>
+        <input type="text" id="add-theater" placeholder="Theater" required />
+        <input type="number" id="add-price" placeholder="Price" min="0" step="0.01" required />
+        <input type="datetime-local" id="add-startTime" required />
+        <input type="datetime-local" id="add-endTime" required />
+        <button type="submit">Add Showtime</button>
+      </form>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="js/config.js"></script>
+  <script src="js/showtime.js"></script>
+</body>
+</html>

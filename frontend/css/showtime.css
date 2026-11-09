@@ -1,0 +1,206 @@
+#showtime-list, #get-by-id, #add-showtime {
+    max-width: 1200px;
+    margin: 50px auto;
+    padding: 20px;
+    background-color: #1c1c2c;
+    border-radius: 12px;
+    box-shadow: 0 0 20px rgba(192, 132, 252, 0.2);
+  }
+
+  .table-wrapper {
+    overflow-x: auto;
+  }
+
+  .table-status.error,
+  .toast.error {
+    color: #fca5a5;
+  }
+
+  .update-btn {
+    background-color: #22c55e;
+    color: #111827;
+  }
+
+  .delete-btn {
+    background-color: #ef4444;
+    color: #fff;
+  }
+
+  .inline-form {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px;
+    align-items: center;
+  }
+
+  .inline-form input {
+    box-sizing: border-box;
+  }
+  
+  #showtime-list h2,
+  #get-by-id h2,
+  #add-showtime h2 {
+    color: #c084fc;
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: #1c1c2c;
+    color: white;
+  }
+  
+  th, td {
+    padding: 15px;
+    text-align: center;
+    border-bottom: 1px solid #2c2c3c;
+  }
+  
+  th {
+    background-color: #2a2a3d;
+    font-weight: 700;
+  }
+  
+  tr:hover {
+    background-color: #2f2f45;
+  }
+  
+  /* Buttons */
+  button {
+    padding: 8px 16px;
+    margin: 4px;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.3s, transform 0.3s;
+  }
+  
+  /* Update button */
+  button[onclick^="updateShowtime"] {
+    background-color: #22c55e;
+    color: black;
+  }
+  
+  button[onclick^="updateShowtime"]:hover {
+    background-color: #4ade80;
+    transform: scale(1.05);
+  }
+  
+  /* Delete button */
+  button[onclick^="deleteShowtime"] {
+    background-color: #ef4444;
+    color: black;
+  }
+  
+  button[onclick^="deleteShowtime"]:hover {
+    background-color: #f87171;
+    transform: scale(1.05);
+  }
+  
+  /* Add and Get buttons */
+  #add-form button, #get-by-id button {
+    background-color: #a855f7;
+    color: black;
+    font-size: 1rem;
+    padding: 12px 20px;
+    border-radius: 10px;
+    margin-top: 10px;
+    box-shadow: 0 0 10px #a855f7;
+  }
+  
+  #add-form button:hover, #get-by-id button:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 20px #c084fc;
+  }
+  
+  /* Inputs */
+  input {
+    padding: 10px;
+    margin: 8px 0;
+    width: 100%;
+    border: 1px solid #555;
+    border-radius: 8px;
+    background-color: #2c2c3c;
+    color: white;
+  }
+
+  select#add-movieId {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 1rem;
+    background-color: #1c1c2c;
+    color: #ffffff;
+    border: 1px solid #a855f7;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(168, 85, 247, 0.2);
+    transition: box-shadow 0.3s, border-color 0.3s;
+    margin-bottom: 12px;
+  }
+  
+  select#add-movieId:focus {
+    outline: none;
+    border-color: #c084fc;
+    box-shadow: 0 0 15px rgba(192, 132, 252, 0.6);
+  }
+  
+  select#add-movieId option {
+    background-color: #1c1c2c;
+    color: #fff;
+  }
+
+
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #1f1f2f;
+    color: #c084fc;
+    padding: 12px 24px;
+    border-radius: 12px;
+    box-shadow: 0 0 15px #a855f7;
+    font-weight: bold;
+    z-index: 9999;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+  }
+  
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+  }
+
+
+
+  .fade-in {
+    animation: fadeInUp 1.3s ease forwards;
+    opacity: 0;
+  }
+  
+  @keyframes fadeInUp {
+    0% {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  
+  #add-form button {
+    transition: all 0.3s ease;
+  }
+  
+  #add-form button:hover {
+    background-color: #c084fc;
+    color: white;
+    transform: scale(1.08);
+  }
