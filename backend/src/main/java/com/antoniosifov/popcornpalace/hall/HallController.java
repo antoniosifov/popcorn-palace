@@ -1,7 +1,9 @@
 package com.antoniosifov.popcornpalace.hall;
 
 import com.antoniosifov.popcornpalace.common.web.PageResponse;
+import com.antoniosifov.popcornpalace.common.config.OpenApiConfig;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springdoc.core.annotations.ParameterObject;
@@ -48,6 +50,7 @@ public class HallController
     }
 
     @PostMapping
+    @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
     @Operation(summary = "Create a hall", description = """
             The layout is given as blocks of identical rows, from the screen to the back, \
             and cannot be changed afterwards. At most 60 rows and 1000 seats.""")
@@ -60,6 +63,7 @@ public class HallController
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
     @Operation(summary = "Delete a hall", description = "Fails with 409 while the hall still has showtimes.")
     public void delete(@PathVariable Long id)
     {

@@ -29,6 +29,10 @@ services:
       DB_URL: jdbc:postgresql://db:5432/popcorn-palace
       DB_USERNAME: popcorn-palace
       DB_PASSWORD: popcorn-palace
+      # Development defaults; override them in .env (see .env.example).
+      JWT_SECRET: ${JWT_SECRET:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@popcorn.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin-dev-password}
     ports:
       - "${API_PORT:-8080}:8080"
 

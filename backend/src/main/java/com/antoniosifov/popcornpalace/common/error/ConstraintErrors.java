@@ -19,6 +19,8 @@ final class ConstraintErrors
     }
 
     private static final Map<String, ConstraintError> BY_CONSTRAINT = Map.of(
+            "uq_users_email",
+            new ConstraintError(ErrorCode.EMAIL_TAKEN, "An account with this email already exists"),
             "uq_movies_title",
             new ConstraintError(ErrorCode.MOVIE_TITLE_TAKEN, "A movie with this title already exists"),
             "fk_showtimes_movie",

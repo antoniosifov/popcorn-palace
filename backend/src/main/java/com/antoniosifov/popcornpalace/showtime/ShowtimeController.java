@@ -1,8 +1,10 @@
 package com.antoniosifov.popcornpalace.showtime;
 
 import com.antoniosifov.popcornpalace.common.web.PageResponse;
+import com.antoniosifov.popcornpalace.common.config.OpenApiConfig;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springdoc.core.annotations.ParameterObject;
@@ -53,6 +55,7 @@ public class ShowtimeController
     }
 
     @PostMapping
+    @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
     @Operation(summary = "Schedule a showtime", description = "Fails with 409 when it overlaps another showtime in the same hall.")
     public ResponseEntity<ShowtimeResponse> create(@Valid @RequestBody ShowtimeRequest request)
     {
@@ -62,6 +65,7 @@ public class ShowtimeController
     }
 
     @PutMapping("/{id}")
+    @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
     @Operation(summary = "Replace a showtime", description = "Fails with 409 when it overlaps another showtime in the same hall, or when a showtime with bookings is moved to another hall.")
     public ShowtimeResponse update(@PathVariable Long id, @Valid @RequestBody ShowtimeRequest request)
     {
@@ -70,6 +74,7 @@ public class ShowtimeController
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
     @Operation(summary = "Delete a showtime", description = "Fails with 409 while the showtime has bookings.")
     public void delete(@PathVariable Long id)
     {

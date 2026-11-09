@@ -31,3 +31,22 @@ app:
   cors:
     # Browser origins allowed to call the API.
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
+  security:
+    jwt:
+      # HS256 signing key, at least 32 characters. Leave empty to generate a random
+      # key at startup (fine for development: tokens stop working after a restart).
+      secret: ${JWT_SECRET:}
+      # How long an access token stays valid (ISO-8601 duration).
+      ttl: ${JWT_TTL:PT1H}
+      issuer: popcorn-palace
+    admin:
+      # Optional administrator account created at startup if it does not exist yet.
+      email: ${ADMIN_EMAIL:}
+      password: ${ADMIN_PASSWORD:}
+
+logging:
+  level:
+    # Hibernate logs every constraint violation as an error. Here they are an
+    # expected outcome (the loser of a race for a seat or a time slot) and are
+    # turned into 409 responses; anything unexpected is logged by ApiExceptionHandler.
+    org.hibernate.orm.jdbc.error: "OFF"
