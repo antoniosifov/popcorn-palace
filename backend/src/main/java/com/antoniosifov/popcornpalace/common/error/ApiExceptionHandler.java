@@ -2,6 +2,7 @@ package com.antoniosifov.popcornpalace.common.error;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -17,6 +18,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Turns every failure into an RFC 9457 "problem details" response
@@ -49,17 +51,23 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler
         return problem(exception.getStatus(), exception.getCode().name(), exception.getMessage());
     }
 
-    /** A database constraint rejected the write: report the business rule it protects. */
-    @ExceptionHandler(DataIntegrityViolationException.class)
-    ProblemDetail handleDataIntegrityViolation(DataIntegrityViolationException exception)
+    /**
+     * The database rejected the write. If one of our named constraints did it,
+     * report the business rule it protects; otherwise it is either an unmapped
+     * integrity violation (still a conflict) or a real database failure.
+     */
+    @ExceptionHandler(DataAccessException.class)
+    ProblemDetail handleDataAccess(DataAccessException exception)
     {
-        return ConstraintErrors.resolve(exception)
-                .map(error -> problem(HttpStatus.CONFLICT, error.code().name(), error.message()))
-                .orElseGet(() -> {
-                    log.warn("Unmapped data integrity violation", exception);
-                    return problem(HttpStatus.CONFLICT, ErrorCode.DATA_CONFLICT.name(),
-                            "The request conflicts with existing data");
-                });
+        Optional<ConstraintErrors.ConstraintError> known = ConstraintErrors.resolve(exception);
+        if (known.isPresent()) {
+            return problem(HttpStatus.CONFLICT, known.get().code().name(), known.get().message());
+        }
+        if (exception instanceof DataIntegrityViolationException) {
+            log.warn("Unmapped data integrity violation", exception);
+            return problem(HttpStatus.CONFLICT, ErrorCode.DATA_CONFLICT.name(), "The request conflicts with existing data");
+        }
+        return handleUnexpected(exception);
     }
 
     /** Last resort: log the cause, but never leak internals to the client. */

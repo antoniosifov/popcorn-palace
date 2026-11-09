@@ -2,11 +2,14 @@ package com.antoniosifov.popcornpalace.booking;
 
 import com.antoniosifov.popcornpalace.common.error.ApiException;
 import com.antoniosifov.popcornpalace.common.error.ErrorCode;
+import com.antoniosifov.popcornpalace.hall.Seat;
+import com.antoniosifov.popcornpalace.hall.SeatRepository;
 import com.antoniosifov.popcornpalace.showtime.Showtime;
 import com.antoniosifov.popcornpalace.showtime.ShowtimeRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -18,18 +21,21 @@ public class BookingService
 {
     private final BookingRepository bookingRepository;
     private final ShowtimeRepository showtimeRepository;
+    private final SeatRepository seatRepository;
     private final Clock clock;
 
-    public BookingService(BookingRepository bookingRepository, ShowtimeRepository showtimeRepository, Clock clock)
+    public BookingService(BookingRepository bookingRepository, ShowtimeRepository showtimeRepository,
+                          SeatRepository seatRepository, Clock clock)
     {
         this.bookingRepository = bookingRepository;
         this.showtimeRepository = showtimeRepository;
+        this.seatRepository = seatRepository;
         this.clock = clock;
     }
 
     public BookingResponse get(UUID id)
     {
-        return bookingRepository.findById(id)
+        return bookingRepository.findWithSeatById(id)
                 .map(BookingResponse::from)
                 .orElseThrow(() -> ApiException.notFound(ErrorCode.BOOKING_NOT_FOUND, "Booking %s was not found".formatted(id)));
     }
@@ -40,6 +46,15 @@ public class BookingService
         Showtime showtime = showtimeRepository.findById(request.showtimeId())
                 .orElseThrow(() -> ApiException.notFound(ErrorCode.SHOWTIME_NOT_FOUND,
                         "Showtime %d was not found".formatted(request.showtimeId())));
+        Seat seat = seatRepository.findById(request.seatId())
+                .orElseThrow(() -> ApiException.notFound(ErrorCode.SEAT_NOT_FOUND,
+                        "Seat %d was not found".formatted(request.seatId())));
+
+        // Comparing ids only: neither hall is loaded from the database.
+        if (!seat.getHall().getId().equals(showtime.getHall().getId())) {
+            throw ApiException.badRequest(ErrorCode.SEAT_NOT_IN_HALL,
+                    "Seat %d is not in the hall of showtime %d".formatted(seat.getId(), showtime.getId()));
+        }
 
         // Millisecond precision: the value returned now is exactly the value
         // read back later (PostgreSQL does not keep nanoseconds).
@@ -50,16 +65,23 @@ public class BookingService
         }
 
         // Fast path for the common case, with a message that names the seat.
-        if (bookingRepository.existsByShowtimeIdAndSeatNumber(showtime.getId(), request.seatNumber())) {
+        if (bookingRepository.existsByShowtimeIdAndSeatId(showtime.getId(), seat.getId())) {
             throw ApiException.conflict(ErrorCode.SEAT_ALREADY_BOOKED,
-                    "Seat %d is already booked for this showtime".formatted(request.seatNumber()));
+                    "Row %d seat %d is already booked for this showtime".formatted(seat.getRowNumber(), seat.getSeatNumber()));
+        }
+
+        BigDecimal price = showtime.priceOf(seat.getCategory());
+        if (price == null) {
+            // Cannot happen through the API: a showtime is only saved with a price
+            // for every category of its hall, and hall layouts never change.
+            throw new IllegalStateException("Showtime %d has no price for %s seats".formatted(showtime.getId(), seat.getCategory()));
         }
 
         // The check above cannot stop two simultaneous requests: both can see the
         // seat as free. The unique constraint uq_bookings_showtime_seat is what
         // guarantees a single winner; the loser's insert fails here and is
         // reported as the same SEAT_ALREADY_BOOKED conflict.
-        Booking booking = new Booking(showtime, request.seatNumber(), request.userId(), now);
+        Booking booking = new Booking(showtime, seat, request.userId(), price, now);
         return BookingResponse.from(bookingRepository.saveAndFlush(booking));
     }
 }
