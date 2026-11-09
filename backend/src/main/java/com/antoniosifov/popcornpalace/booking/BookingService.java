@@ -15,12 +15,16 @@ import com.antoniosifov.popcornpalace.payment.PaymentStatus;
 import com.antoniosifov.popcornpalace.security.CurrentUser;
 import com.antoniosifov.popcornpalace.showtime.Showtime;
 import com.antoniosifov.popcornpalace.showtime.ShowtimeRepository;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
@@ -49,11 +53,13 @@ public class BookingService
     private final ApplicationEventPublisher applicationEvents;
     private final TransactionTemplate transaction;
     private final Clock clock;
+    private final Counter bookingsConfirmed;
+    private final Counter bookingsCancelled;
 
     public BookingService(BookingRepository bookingRepository, ShowtimeRepository showtimeRepository,
                           SeatRepository seatRepository, PaymentRepository paymentRepository,
                           PaymentService paymentService, BookingEventPublisher events,
-                          ApplicationEventPublisher applicationEvents,
+                          ApplicationEventPublisher applicationEvents, MeterRegistry registry,
                           PlatformTransactionManager transactionManager, Clock clock)
     {
         this.bookingRepository = bookingRepository;
@@ -65,6 +71,29 @@ public class BookingService
         this.applicationEvents = applicationEvents;
         this.transaction = new TransactionTemplate(transactionManager);
         this.clock = clock;
+        bookingsConfirmed = bookings(registry, "confirmed");
+        bookingsCancelled = bookings(registry, "cancelled");
+    }
+
+    private static Counter bookings(MeterRegistry registry, String outcome)
+    {
+        return Counter.builder("popcorn.bookings")
+                .description("Bookings confirmed and cancelled")
+                .tag("outcome", outcome)
+                .register(registry);
+    }
+
+    /** Counted only once the transaction has committed: a booking that rolled back never happened. */
+    private static void countAfterCommit(Counter counter)
+    {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization()
+        {
+            @Override
+            public void afterCommit()
+            {
+                counter.increment();
+            }
+        });
     }
 
     /** The caller's own bookings. */
@@ -139,6 +168,7 @@ public class BookingService
         // Written to the outbox in this same transaction: the event exists if
         // and only if the booking does.
         events.confirmed(saved);
+        countAfterCommit(bookingsConfirmed);
         // Browsers hear about it once this transaction commits.
         applicationEvents.publishEvent(SeatStatusChanged.booked(showtimeId, List.copyOf(pricesBySeat.keySet())));
         return BookingResponse.from(saved);
@@ -170,6 +200,7 @@ public class BookingService
             }
             booking.cancel(now);
             events.cancelled(booking);
+            countAfterCommit(bookingsCancelled);
             applicationEvents.publishEvent(SeatStatusChanged.available(booking.getShowtime().getId(),
                     booking.getSeats().stream().map(seat -> seat.getSeat().getId()).toList()));
 

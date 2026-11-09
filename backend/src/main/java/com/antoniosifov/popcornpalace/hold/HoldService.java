@@ -12,6 +12,8 @@ import com.antoniosifov.popcornpalace.security.CurrentUser;
 import com.antoniosifov.popcornpalace.showtime.Showtime;
 import com.antoniosifov.popcornpalace.showtime.ShowtimeRepository;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,10 +49,13 @@ public class HoldService
     private final HoldProperties properties;
     private final ApplicationEventPublisher events;
     private final Clock clock;
+    private final Counter holdsCreated;
+    private final Counter holdsRefused;
+    private final Counter holdsReleased;
 
     public HoldService(SeatHoldStore holdStore, ShowtimeRepository showtimeRepository, SeatRepository seatRepository,
                        BookingRepository bookingRepository, HoldProperties properties,
-                       ApplicationEventPublisher events, Clock clock)
+                       ApplicationEventPublisher events, MeterRegistry registry, Clock clock)
     {
         this.holdStore = holdStore;
         this.showtimeRepository = showtimeRepository;
@@ -59,6 +64,17 @@ public class HoldService
         this.properties = properties;
         this.events = events;
         this.clock = clock;
+        holdsCreated = holds(registry, "created");
+        holdsRefused = holds(registry, "refused");
+        holdsReleased = holds(registry, "released");
+    }
+
+    private static Counter holds(MeterRegistry registry, String result)
+    {
+        return Counter.builder("popcorn.holds")
+                .description("Seat holds: created, refused because the seats were taken, or released without paying")
+                .tag("result", result)
+                .register(registry);
     }
 
     @Transactional(readOnly = true)
@@ -93,9 +109,12 @@ public class HoldService
                     .conflict(ErrorCode.HOLD_ALREADY_EXISTS,
                             "You already hold seats for this showtime; confirm or release that hold first")
                     .with("holdId", existing.existingHoldId());
-            case AcquireResult.SeatsTaken taken -> throw ApiException
-                    .conflict(ErrorCode.SEAT_ALREADY_HELD, "Some of the seats are being booked by another customer")
-                    .with("seatIds", taken.seatIds());
+            case AcquireResult.SeatsTaken taken -> {
+                holdsRefused.increment();
+                throw ApiException
+                        .conflict(ErrorCode.SEAT_ALREADY_HELD, "Some of the seats are being booked by another customer")
+                        .with("seatIds", taken.seatIds());
+            }
         }
 
         // Checked only now, with the seats held: a seat can only be sold while
@@ -104,12 +123,14 @@ public class HoldService
         Set<Long> alreadySold = bookingRepository.findBookedSeatIdsAmong(showtimeId, seatIds);
         if (!alreadySold.isEmpty()) {
             holdStore.release(hold);
+            holdsRefused.increment();
             throw ApiException.conflict(ErrorCode.SEAT_ALREADY_BOOKED, "Some of the seats are already booked")
                     .with("seatIds", alreadySold.stream().sorted().toList());
         }
 
         // Tell the browsers looking at this showtime.
         events.publishEvent(SeatStatusChanged.held(showtimeId, hold.seatIds(), hold.id()));
+        holdsCreated.increment();
         return HoldResponse.from(hold);
     }
 
@@ -134,6 +155,7 @@ public class HoldService
             }
             holdStore.release(hold);
             events.publishEvent(SeatStatusChanged.available(showtimeId, hold.seatIds()));
+            holdsReleased.increment();
         });
     }
 

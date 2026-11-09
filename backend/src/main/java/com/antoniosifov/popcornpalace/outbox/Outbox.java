@@ -1,5 +1,8 @@
 package com.antoniosifov.popcornpalace.outbox;
 
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
+import io.micrometer.tracing.propagation.Propagator;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
@@ -9,6 +12,8 @@ import tools.jackson.databind.json.JsonMapper;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -18,14 +23,21 @@ import java.util.UUID;
 @Component
 public class Outbox
 {
+    /** The W3C header that names a trace and the span to continue from. */
+    public static final String TRACE_PARENT = "traceparent";
+
     private final JdbcTemplate jdbc;
     private final JsonMapper jsonMapper;
+    private final Tracer tracer;
+    private final Propagator propagator;
     private final Clock clock;
 
-    public Outbox(JdbcTemplate jdbc, JsonMapper jsonMapper, Clock clock)
+    public Outbox(JdbcTemplate jdbc, JsonMapper jsonMapper, Tracer tracer, Propagator propagator, Clock clock)
     {
         this.jdbc = jdbc;
         this.jsonMapper = jsonMapper;
+        this.tracer = tracer;
+        this.propagator = propagator;
         this.clock = clock;
     }
 
@@ -43,9 +55,25 @@ public class Outbox
     public void append(String topic, String key, String eventType, UUID eventId, Object payload)
     {
         jdbc.update("""
-                        INSERT INTO outbox_events (event_id, topic, message_key, event_type, payload, created_at)
-                        VALUES (?, ?, ?, ?, ?::json, ?)""",
+                        INSERT INTO outbox_events (event_id, topic, message_key, event_type, payload, created_at, trace_parent)
+                        VALUES (?, ?, ?, ?, ?::json, ?, ?)""",
                 eventId, topic, key, eventType, jsonMapper.writeValueAsString(payload),
-                Timestamp.from(clock.instant().truncatedTo(ChronoUnit.MILLIS)));
+                Timestamp.from(clock.instant().truncatedTo(ChronoUnit.MILLIS)), traceParent());
+    }
+
+    /**
+     * The trace of the request that produced the event, as a {@code traceparent}
+     * header. The relay continues it when it sends the message, which may happen
+     * on another thread or another instance. Null when there is no trace.
+     */
+    private String traceParent()
+    {
+        Span span = tracer.currentSpan();
+        if (span == null) {
+            return null;
+        }
+        Map<String, String> headers = new HashMap<>();
+        propagator.inject(span.context(), headers, Map::put);
+        return headers.get(TRACE_PARENT);
     }
 }

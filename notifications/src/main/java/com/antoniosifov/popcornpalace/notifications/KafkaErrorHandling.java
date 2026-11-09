@@ -1,5 +1,7 @@
 package com.antoniosifov.popcornpalace.notifications;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.common.TopicPartition;
 import org.springframework.beans.factory.annotation.Value;
@@ -7,6 +9,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.TopicBuilder;
 import org.springframework.kafka.core.KafkaOperations;
+import org.springframework.kafka.listener.ConsumerRecordRecoverer;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.util.backoff.FixedBackOff;
@@ -32,13 +35,23 @@ class KafkaErrorHandling
     private static final int PARTITIONS = 3;
 
     @Bean
-    DefaultErrorHandler errorHandler(KafkaOperations<String, String> kafka, NotificationProperties properties)
+    DefaultErrorHandler errorHandler(KafkaOperations<String, String> kafka, NotificationProperties properties,
+                                     MeterRegistry registry)
     {
         // Same partition number in the dead-letter topic, which is why it has as many partitions.
         DeadLetterPublishingRecoverer toDeadLetterTopic = new DeadLetterPublishingRecoverer(kafka,
                 (message, exception) -> new TopicPartition(message.topic() + DEAD_LETTER_SUFFIX, message.partition()));
 
-        DefaultErrorHandler handler = new DefaultErrorHandler(toDeadLetterTopic,
+        // Every parked event is counted: a rising number is something to look at.
+        Counter deadLetters = Counter.builder("popcorn.notifications.dead.letters")
+                .description("Events moved to the dead-letter topic")
+                .register(registry);
+        ConsumerRecordRecoverer countedDeadLetters = (message, exception) -> {
+            deadLetters.increment();
+            toDeadLetterTopic.accept(message, exception);
+        };
+
+        DefaultErrorHandler handler = new DefaultErrorHandler(countedDeadLetters,
                 new FixedBackOff(properties.retryInterval().toMillis(), properties.maxRetries()));
         handler.addNotRetryableExceptions(InvalidEventException.class);
         return handler;

@@ -11,6 +11,7 @@ import com.antoniosifov.popcornpalace.payment.Payment;
 import com.antoniosifov.popcornpalace.payment.PaymentProvider;
 import com.antoniosifov.popcornpalace.payment.PaymentProvider.ChargeResult;
 import com.antoniosifov.popcornpalace.payment.PaymentProviderException;
+import com.antoniosifov.popcornpalace.payment.PaymentMetrics;
 import com.antoniosifov.popcornpalace.payment.PaymentService;
 import com.antoniosifov.popcornpalace.security.CurrentUser;
 import org.slf4j.Logger;
@@ -58,16 +59,19 @@ public class CheckoutService
     private final CheckoutLock checkoutLock;
     private final PaymentService paymentService;
     private final PaymentProvider paymentProvider;
+    private final PaymentMetrics paymentMetrics;
     private final BookingService bookingService;
 
     public CheckoutService(SeatHoldStore holdStore, HoldProperties holdProperties, CheckoutLock checkoutLock,
-                           PaymentService paymentService, PaymentProvider paymentProvider, BookingService bookingService)
+                           PaymentService paymentService, PaymentProvider paymentProvider, PaymentMetrics paymentMetrics,
+                           BookingService bookingService)
     {
         this.holdStore = holdStore;
         this.holdProperties = holdProperties;
         this.checkoutLock = checkoutLock;
         this.paymentService = paymentService;
         this.paymentProvider = paymentProvider;
+        this.paymentMetrics = paymentMetrics;
         this.bookingService = bookingService;
     }
 
@@ -117,13 +121,16 @@ public class CheckoutService
         }
         catch (PaymentProviderException exception) {
             paymentService.markFailed(payment.getId(), Payment.PROVIDER_ERROR);
+            paymentMetrics.providerError();
             throw providerUnavailable();
         }
         if (charge instanceof ChargeResult.Declined declined) {
             // The hold is kept: the customer can try another card with a new key.
             paymentService.markFailed(payment.getId(), declined.declineCode());
+            paymentMetrics.declined();
             throw paymentDeclined(declined.declineCode());
         }
+        paymentMetrics.charged(payment.getAmount());
 
         // 3. The customer has paid. Save the booking, or give the money back.
         BookingResponse booking;

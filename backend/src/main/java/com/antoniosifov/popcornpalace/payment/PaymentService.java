@@ -30,15 +30,18 @@ public class PaymentService
     private final PaymentRepository paymentRepository;
     private final PaymentProvider paymentProvider;
     private final PaymentProperties properties;
+    private final PaymentMetrics metrics;
     private final TransactionTemplate transaction;
     private final Clock clock;
 
     public PaymentService(PaymentRepository paymentRepository, PaymentProvider paymentProvider,
-                          PaymentProperties properties, PlatformTransactionManager transactionManager, Clock clock)
+                          PaymentProperties properties, PaymentMetrics metrics,
+                          PlatformTransactionManager transactionManager, Clock clock)
     {
         this.paymentRepository = paymentRepository;
         this.paymentProvider = paymentProvider;
         this.properties = properties;
+        this.metrics = metrics;
         this.transaction = new TransactionTemplate(transactionManager);
         this.clock = clock;
     }
@@ -83,7 +86,10 @@ public class PaymentService
             log.warn("Refund of payment {} failed and will be retried: {}", paymentId, exception.getMessage());
             return false;
         }
-        update(paymentId, (payment, now) -> payment.markRefunded(reason, now));
+        update(paymentId, (payment, now) -> {
+            payment.markRefunded(reason, now);
+            metrics.refunded(payment.getAmount());
+        });
         return true;
     }
 

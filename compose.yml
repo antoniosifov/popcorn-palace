@@ -1,8 +1,10 @@
 # Full local stack: `docker compose up --build`
-# Infrastructure only (run the services from your IDE): `docker compose up db redis kafka mailpit`
+# Infrastructure only (run the services from your IDE): `docker compose up db redis kafka mailpit jaeger`
 # Host ports can be changed in .env (see .env.example).
 #
 # After booking a seat, open http://localhost:8025 to read the ticket email.
+# Watch the stack: Grafana http://localhost:3000, Jaeger (traces) http://localhost:16686,
+# Prometheus http://localhost:9090.
 services:
   db:
     image: postgres:17-alpine
@@ -90,12 +92,21 @@ services:
       DB_PASSWORD: popcorn-palace
       REDIS_HOST: redis
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
+      LOG_FORMAT: ${LOG_FORMAT:-}
       # Development defaults; override them in .env (see .env.example).
       JWT_SECRET: ${JWT_SECRET:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@popcorn.local}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin-dev-password}
     ports:
       - "${API_PORT:-8080}:8080"
+    # Port 8081 (health, metrics) stays inside the stack.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/actuator/health/readiness"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 40s
 
   # Reads booking events from Kafka and emails tickets.
   notifications:
@@ -113,6 +124,52 @@ services:
       REDIS_HOST: redis
       MAIL_HOST: mailpit
       MAIL_PORT: 1025
+      OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
+      LOG_FORMAT: ${LOG_FORMAT:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/actuator/health/readiness"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 40s
+
+  # Traces: a booking request, its outbox publish, the Kafka message and the
+  # email it caused, as one tree. Both services send spans here (OTLP, port 4318
+  # inside the stack). http://localhost:16686
+  jaeger:
+    image: jaegertracing/jaeger:2.23.0
+    restart: unless-stopped
+    ports:
+      - "${JAEGER_PORT:-16686}:16686"
+
+  # Metrics: scrapes both services every 10 seconds (see observability/prometheus.yml). http://localhost:9090
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    restart: unless-stopped
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+
+  # The dashboard over those metrics, with Jaeger as a second data source.
+  # http://localhost:3000; viewing needs no login, editing needs admin / GRAFANA_PASSWORD.
+  grafana:
+    image: grafana/grafana:13.3.0
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+      - jaeger
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/popcorn-palace.json
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
 
 volumes:
   db-data:

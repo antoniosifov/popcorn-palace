@@ -1,5 +1,7 @@
 package com.antoniosifov.popcornpalace.notifications;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,12 +29,29 @@ public class BookingEventListener
     private final JsonMapper jsonMapper;
     private final ProcessedEvents processedEvents;
     private final TicketMailer mailer;
+    private final Counter ticketEmails;
+    private final Counter cancellationEmails;
+    private final Counter duplicates;
 
-    public BookingEventListener(JsonMapper jsonMapper, ProcessedEvents processedEvents, TicketMailer mailer)
+    public BookingEventListener(JsonMapper jsonMapper, ProcessedEvents processedEvents, TicketMailer mailer,
+                                MeterRegistry registry)
     {
         this.jsonMapper = jsonMapper;
         this.processedEvents = processedEvents;
         this.mailer = mailer;
+        ticketEmails = emails(registry, BookingEvent.CONFIRMED);
+        cancellationEmails = emails(registry, BookingEvent.CANCELLED);
+        duplicates = Counter.builder("popcorn.notifications.duplicates")
+                .description("Events delivered again that had already been handled")
+                .register(registry);
+    }
+
+    private static Counter emails(MeterRegistry registry, String eventType)
+    {
+        return Counter.builder("popcorn.notifications.emails")
+                .description("Emails sent, by the event that caused them")
+                .tag("type", eventType)
+                .register(registry);
     }
 
     /**
@@ -45,13 +64,20 @@ public class BookingEventListener
         BookingEvent event = parse(message);
 
         if (processedEvents.contains(event.eventId())) {
+            duplicates.increment();
             log.info("Ignoring event {} ({}): already handled", event.eventId(), event.type());
             return;
         }
 
         switch (event.type()) {
-            case BookingEvent.CONFIRMED -> mailer.sendTickets(event);
-            case BookingEvent.CANCELLED -> mailer.sendCancellation(event);
+            case BookingEvent.CONFIRMED -> {
+                mailer.sendTickets(event);
+                ticketEmails.increment();
+            }
+            case BookingEvent.CANCELLED -> {
+                mailer.sendCancellation(event);
+                cancellationEmails.increment();
+            }
             default -> {
                 // A type this service does not know about yet. Not an error:
                 // the API may publish new kinds of events at any time.

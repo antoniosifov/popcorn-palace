@@ -20,4 +20,6 @@ RUN addgroup -S app && adduser -S app -G app
 COPY --from=build /workspace/target/popcorn-palace-notifications-*.jar app.jar
 USER app
 
+# Health and metrics, for the stack only; the service has no API.
+EXPOSE 8081
 ENTRYPOINT ["java", "-jar", "app.jar"]
