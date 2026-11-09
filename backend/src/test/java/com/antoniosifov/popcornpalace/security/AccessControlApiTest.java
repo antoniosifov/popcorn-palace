@@ -1,6 +1,7 @@
 package com.antoniosifov.popcornpalace.security;
 
 import com.antoniosifov.popcornpalace.support.ApiIntegrationTest;
+import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -125,14 +126,16 @@ class AccessControlApiTest extends ApiIntegrationTest
 
     // ------------------------------------------------------------ bookings
 
-    @DisplayName("Without a token, seats cannot be booked and bookings cannot be read")
+    @DisplayName("Without a token, seats cannot be held and bookings cannot be read")
     @Test
     void anonymousCannotBookOrReadBookings() throws Exception
     {
         String bookingId = createBooking(showtimeId, seatId(hallId, 1, 1));
 
-        anonymous.perform(post(BOOKINGS).contentType(MediaType.APPLICATION_JSON)
-                        .content(bookingJson(showtimeId, seatId(hallId, 1, 2))))
+        anonymous.perform(post(holdsUrl(showtimeId)).contentType(MediaType.APPLICATION_JSON)
+                        .content(holdJson(seatId(hallId, 1, 2))))
+                .andExpect(problem(401, "UNAUTHENTICATED"));
+        anonymous.perform(get(holdsUrl(showtimeId) + "/mine"))
                 .andExpect(problem(401, "UNAUTHENTICATED"));
         anonymous.perform(get(BOOKINGS))
                 .andExpect(problem(401, "UNAUTHENTICATED"));
@@ -144,9 +147,14 @@ class AccessControlApiTest extends ApiIntegrationTest
     @Test
     void bookingBelongsToTheTokenOwner() throws Exception
     {
-        postJsonAs(customerToken, BOOKINGS, """
-                {"showtimeId": %d, "seatId": %d, "userId": "%s"}
-                """.formatted(showtimeId, seatId(hallId, 1, 1), OTHER_CUSTOMER_ID))
+        String body = postJsonAs(customerToken, holdsUrl(showtimeId), """
+                {"seatIds": [%d], "userId": "%s"}
+                """.formatted(seatId(hallId, 1, 1), OTHER_CUSTOMER_ID))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String holdId = JsonPath.read(body, "$.id");
+
+        confirm(customerToken, showtimeId, holdId)
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.userId").value(CUSTOMER_ID.toString()));
     }
@@ -156,8 +164,7 @@ class AccessControlApiTest extends ApiIntegrationTest
     void customersSeeOnlyTheirOwnBookings() throws Exception
     {
         String customersBooking = createBooking(showtimeId, seatId(hallId, 1, 1));
-        postJsonAs(otherCustomerToken, BOOKINGS, bookingJson(showtimeId, seatId(hallId, 1, 2)))
-                .andExpect(status().isCreated());
+        createBookingAs(otherCustomerToken, showtimeId, seatId(hallId, 1, 2));
 
         mvc.perform(get(BOOKINGS).header(HttpHeaders.AUTHORIZATION, bearer(customerToken)))
                 .andExpect(status().isOk())

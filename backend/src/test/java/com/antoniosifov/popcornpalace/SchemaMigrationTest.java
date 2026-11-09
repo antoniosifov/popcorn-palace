@@ -52,7 +52,7 @@ class SchemaMigrationTest
         jdbc = new JdbcTemplate(dataSource);
     }
 
-    @DisplayName("Data from V1 is carried forward: theaters become halls with seats; showtimes, prices, bookings and their users are kept")
+    @DisplayName("Data from V1 is carried forward through every migration: halls with seats, prices, accounts, bookings with seat rows")
     @Test
     void migratesExistingDataFromV1()
     {
@@ -95,25 +95,29 @@ class SchemaMigrationTest
                         Map.of("id", 3L, "hall", "IMAX", "category", "STANDARD", "price", "25.00"));
 
         // Seat numbers 1..300 map onto rows of 20; each booking keeps the price of its showtime.
+        // V4: each old single-seat booking is now an order with exactly one seat row.
         assertThat(jdbc.queryForList("""
                 SELECT right(b.id::text, 1) AS booking, h.name AS hall, se.row_number AS seat_row,
-                       se.seat_number AS seat, b.price::text AS price
+                       se.seat_number AS seat, bs.price::text AS price, b.total_price::text AS total
                 FROM bookings b
-                         JOIN seats se ON se.id = b.seat_id
+                         JOIN booking_seats bs ON bs.booking_id = b.id AND bs.showtime_id = b.showtime_id
+                         JOIN seats se ON se.id = bs.seat_id
                          JOIN halls h ON h.id = b.hall_id
                 ORDER BY b.id"""))
                 .containsExactly(
-                        Map.of("booking", "1", "hall", "Hall 1", "seat_row", 1, "seat", 1, "price", "14.50"),
-                        Map.of("booking", "2", "hall", "Hall 1", "seat_row", 2, "seat", 1, "price", "14.50"),
-                        Map.of("booking", "3", "hall", "Hall 1", "seat_row", 15, "seat", 20, "price", "16.00"),
-                        Map.of("booking", "4", "hall", "IMAX", "seat_row", 1, "seat", 20, "price", "25.00"));
+                        Map.of("booking", "1", "hall", "Hall 1", "seat_row", 1, "seat", 1, "price", "14.50", "total", "14.50"),
+                        Map.of("booking", "2", "hall", "Hall 1", "seat_row", 2, "seat", 1, "price", "14.50", "total", "14.50"),
+                        Map.of("booking", "3", "hall", "Hall 1", "seat_row", 15, "seat", 20, "price", "16.00", "total", "16.00"),
+                        Map.of("booking", "4", "hall", "IMAX", "seat_row", 1, "seat", 20, "price", "25.00", "total", "25.00"));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM booking_seats", Long.class)).isEqualTo(4);
 
         // The columns replaced by the new model are gone.
         List<String> columns = jdbc.queryForList("""
                 SELECT table_name || '.' || column_name
                 FROM information_schema.columns
                 WHERE table_schema = 'public' AND table_name IN ('showtimes', 'bookings')""", String.class);
-        assertThat(columns).doesNotContain("showtimes.theater", "showtimes.price", "bookings.seat_number");
+        assertThat(columns).doesNotContain("showtimes.theater", "showtimes.price",
+                "bookings.seat_number", "bookings.seat_id", "bookings.price");
 
         // V3: the user id carried by the old bookings became one placeholder account
         // that cannot be logged into, and bookings now reference accounts.
@@ -142,7 +146,7 @@ class SchemaMigrationTest
         migrateToLatest();
 
         assertThat(jdbc.queryForObject(
-                "SELECT count(*) FROM flyway_schema_history WHERE success", Long.class)).isGreaterThanOrEqualTo(3);
+                "SELECT count(*) FROM flyway_schema_history WHERE success", Long.class)).isGreaterThanOrEqualTo(4);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM halls", Long.class)).isZero();
     }
 

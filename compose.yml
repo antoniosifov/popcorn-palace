@@ -1,6 +1,6 @@
 # Full local stack: `docker compose up --build`
 # Database only (run the API from your IDE): `docker compose up db`
-# Host ports can be changed with DB_PORT and API_PORT (see .env.example).
+# Host ports can be changed with DB_PORT, REDIS_PORT and API_PORT (see .env.example).
 services:
   db:
     image: postgres:17-alpine
@@ -19,16 +19,32 @@ services:
       timeout: 3s
       retries: 10
 
+  # Holds seats for customers who are checking out and counts login attempts.
+  # Nothing here needs to survive a restart, so no volume is attached.
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   api:
     build: ./backend
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       DB_URL: jdbc:postgresql://db:5432/popcorn-palace
       DB_USERNAME: popcorn-palace
       DB_PASSWORD: popcorn-palace
+      REDIS_HOST: redis
       # Development defaults; override them in .env (see .env.example).
       JWT_SECRET: ${JWT_SECRET:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@popcorn.local}
