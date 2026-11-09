@@ -8,6 +8,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.core.RedisCallback;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -18,7 +20,11 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 import javax.sql.DataSource;
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -30,9 +36,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Base class for tests that call the API over HTTP against a real PostgreSQL
- * database (started once through Testcontainers and shared by all test classes).
- * Every test starts from empty tables plus three accounts, so tests do not
- * depend on each other.
+ * and a real Redis (started once through Testcontainers and shared by all test
+ * classes). Every test starts from empty tables, an empty Redis and three
+ * accounts, so tests do not depend on each other.
  *
  * <p>Most tests are about business rules, not permissions, so {@link #mvc}
  * sends every request as the administrator unless the request sets its own
@@ -72,6 +78,9 @@ public abstract class ApiIntegrationTest
     @Autowired
     protected TokenService tokenService;
 
+    @Autowired
+    protected StringRedisTemplate redis;
+
     /** Sends requests as the administrator by default. */
     protected MockMvc mvc;
     /** Sends requests with no credentials. */
@@ -86,7 +95,12 @@ public abstract class ApiIntegrationTest
     void resetState()
     {
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("TRUNCATE TABLE bookings, showtime_prices, showtimes, seats, halls, movies, users RESTART IDENTITY CASCADE");
+        jdbc.execute("TRUNCATE TABLE booking_seats, bookings, showtime_prices, showtimes, seats, halls, movies, users RESTART IDENTITY CASCADE");
+        // Seat holds and rate-limit counters live in Redis.
+        redis.execute((RedisCallback<Void>) connection -> {
+            connection.serverCommands().flushDb();
+            return null;
+        });
 
         // Inserted directly: hashing three passwords before every test would be
         // slow, and these accounts only ever authenticate with tokens.
@@ -104,7 +118,7 @@ public abstract class ApiIntegrationTest
                 .build();
     }
 
-    private void insertUser(UUID id, String email, String displayName, Role role)
+    protected void insertUser(UUID id, String email, String displayName, Role role)
     {
         jdbc.update("INSERT INTO users (id, email, password_hash, display_name, role, created_at) VALUES (?, ?, '!', ?, ?, now())",
                 id, email, displayName, role.name());
@@ -175,11 +189,15 @@ public abstract class ApiIntegrationTest
                 """.formatted(movieId, hallId, startTime, endTime, prices);
     }
 
-    protected static String bookingJson(long showtimeId, long seatId)
+    protected static String holdJson(long... seatIds)
     {
-        return """
-                {"showtimeId": %d, "seatId": %d}
-                """.formatted(showtimeId, seatId);
+        return "{\"seatIds\": [%s]}".formatted(
+                Arrays.stream(seatIds).mapToObj(String::valueOf).collect(Collectors.joining(", ")));
+    }
+
+    protected static String holdsUrl(long showtimeId)
+    {
+        return SHOWTIMES + "/" + showtimeId + "/holds";
     }
 
     // --- test data created through the API ---
@@ -205,13 +223,49 @@ public abstract class ApiIntegrationTest
         return idOf(postJson(SHOWTIMES, showtimeJson(movieId, hallId, startTime, endTime)).andExpect(status().isCreated()));
     }
 
-    /** Books the seat as the customer and returns the booking id. */
-    protected String createBooking(long showtimeId, long seatId) throws Exception
+    /** Holds the seats with the given token and returns the hold id. */
+    protected String createHold(String token, long showtimeId, long... seatIds) throws Exception
     {
-        String body = postJsonAs(customerToken, BOOKINGS, bookingJson(showtimeId, seatId))
+        String body = postJsonAs(token, holdsUrl(showtimeId), holdJson(seatIds))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
         return JsonPath.read(body, "$.id");
+    }
+
+    /** Confirms a hold and returns the id of the booking it became. */
+    protected String confirmHold(String token, long showtimeId, String holdId) throws Exception
+    {
+        String body = confirm(token, showtimeId, holdId)
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return JsonPath.read(body, "$.id");
+    }
+
+    protected ResultActions confirm(String token, long showtimeId, String holdId) throws Exception
+    {
+        return mvc.perform(post(holdsUrl(showtimeId) + "/" + holdId + "/confirm")
+                .header(HttpHeaders.AUTHORIZATION, bearer(token)));
+    }
+
+    /** Books the seats as the customer (hold, then confirm) and returns the booking id. */
+    protected String createBooking(long showtimeId, long... seatIds) throws Exception
+    {
+        return createBookingAs(customerToken, showtimeId, seatIds);
+    }
+
+    protected String createBookingAs(String token, long showtimeId, long... seatIds) throws Exception
+    {
+        return confirmHold(token, showtimeId, createHold(token, showtimeId, seatIds));
+    }
+
+    /** Makes every current hold run out, as if its time to live had passed. */
+    protected void expireHolds() throws InterruptedException
+    {
+        Set<String> keys = redis.keys("hold:*");
+        if (keys != null) {
+            keys.forEach(key -> redis.expire(key, Duration.ofMillis(1)));
+        }
+        Thread.sleep(30);
     }
 
     /** Looks up the id of the seat at the given position of a hall. */

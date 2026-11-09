@@ -25,9 +25,9 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 /**
  * The API tests can only reach the race-protection constraints by actually
  * racing, which does not hit the constraint on every run. These tests write
- * through the repositories directly, skipping the services' friendly checks,
- * so the constraint always fires, and assert that the resulting exception is
- * translated to the right API error.
+ * through the repositories directly, skipping the services' checks and the
+ * seat holds, so the constraint always fires, and assert that the resulting
+ * exception is translated to the right API error.
  */
 class ConstraintErrorsIntegrationTest extends ApiIntegrationTest
 {
@@ -65,7 +65,7 @@ class ConstraintErrorsIntegrationTest extends ApiIntegrationTest
                 .contains(ErrorCode.SHOWTIME_OVERLAP);
     }
 
-    @DisplayName("A duplicate booking written past the service check is reported as SEAT_ALREADY_BOOKED")
+    @DisplayName("A second sale of a seat, written without any hold, is reported as SEAT_ALREADY_BOOKED")
     @Test
     void uniqueSeatConstraintIsTranslated() throws Exception
     {
@@ -76,9 +76,13 @@ class ConstraintErrorsIntegrationTest extends ApiIntegrationTest
         Seat seat = seatRepository.findById(seatId(hallId, 1, 1)).orElseThrow();
         Instant now = Instant.parse("2030-01-01T00:00:00Z");
 
-        bookingRepository.saveAndFlush(new Booking(showtime, seat, CUSTOMER_ID, new BigDecimal("14.50"), now));
-        Throwable thrown = catchThrowable(() ->
-                bookingRepository.saveAndFlush(new Booking(showtime, seat, OTHER_CUSTOMER_ID, new BigDecimal("14.50"), now)));
+        Booking first = new Booking(showtime, CUSTOMER_ID, now);
+        first.addSeat(seat, new BigDecimal("14.50"));
+        bookingRepository.saveAndFlush(first);
+
+        Booking second = new Booking(showtime, OTHER_CUSTOMER_ID, now);
+        second.addSeat(seat, new BigDecimal("14.50"));
+        Throwable thrown = catchThrowable(() -> bookingRepository.saveAndFlush(second));
 
         assertThat(thrown).isInstanceOf(DataAccessException.class);
         assertThat(ConstraintErrors.resolve(thrown))
