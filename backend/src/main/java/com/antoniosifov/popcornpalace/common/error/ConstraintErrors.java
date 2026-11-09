@@ -33,8 +33,10 @@ final class ConstraintErrors
             new ConstraintError(ErrorCode.SHOWTIME_OVERLAP, "Another showtime is already scheduled in this hall during this time"),
             "fk_bookings_showtime",
             new ConstraintError(ErrorCode.SHOWTIME_HAS_BOOKINGS, "The showtime has bookings; it cannot be deleted or moved to another hall"),
-            "uq_bookings_showtime_seat",
-            new ConstraintError(ErrorCode.SEAT_ALREADY_BOOKED, "The seat is already booked for this showtime")
+            "fk_booking_seats_showtime",
+            new ConstraintError(ErrorCode.SHOWTIME_HAS_BOOKINGS, "The showtime has bookings; it cannot be deleted or moved to another hall"),
+            "uq_booking_seats_showtime_seat",
+            new ConstraintError(ErrorCode.SEAT_ALREADY_BOOKED, "One of the seats is already booked for this showtime")
     );
 
     private ConstraintErrors()

@@ -24,7 +24,7 @@ import java.util.List;
  * <ul>
  *   <li>anyone: register, log in, browse movies, halls, showtimes and seat maps, read the API docs;</li>
  *   <li>administrators only: create, change or delete movies, halls and showtimes;</li>
- *   <li>any logged-in account: everything else (bookings, own profile).</li>
+ *   <li>any logged-in account: everything else (holding seats, bookings, own profile).</li>
  * </ul>
  */
 @Configuration
@@ -33,6 +33,8 @@ import java.util.List;
 public class SecurityConfig
 {
     private static final String[] CATALOG = {"/api/v1/movies/**", "/api/v1/halls/**", "/api/v1/showtimes/**"};
+    /** Nested under showtimes, but for customers, not for managing the catalog. */
+    private static final String[] CHECKOUT = {"/api/v1/showtimes/*/holds", "/api/v1/showtimes/*/holds/**"};
     private static final String[] API_DOCS = {"/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"};
 
     @Bean
@@ -48,6 +50,8 @@ public class SecurityConfig
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/register", "/api/v1/auth/login").permitAll()
                         .requestMatchers(API_DOCS).permitAll()
+                        // Must come before the catalog rules below: the first matching rule wins.
+                        .requestMatchers(CHECKOUT).authenticated()
                         .requestMatchers(HttpMethod.GET, CATALOG).permitAll()
                         .requestMatchers(CATALOG).hasRole(Role.ADMIN.name())
                         .anyRequest().authenticated())

@@ -2,8 +2,11 @@ package com.antoniosifov.popcornpalace.common.error;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.antoniosifov.popcornpalace.common.ratelimit.RateLimitExceededException;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -51,7 +54,18 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler
     @ExceptionHandler(ApiException.class)
     ProblemDetail handleApiException(ApiException exception)
     {
-        return problem(exception.getStatus(), exception.getCode().name(), exception.getMessage());
+        ProblemDetail problem = problem(exception.getStatus(), exception.getCode().name(), exception.getMessage());
+        exception.getDetails().forEach(problem::setProperty);
+        return problem;
+    }
+
+    /** Tells the client when it may try again, in the standard Retry-After header. */
+    @ExceptionHandler(RateLimitExceededException.class)
+    ResponseEntity<ProblemDetail> handleRateLimitExceeded(RateLimitExceededException exception)
+    {
+        return ResponseEntity.status(exception.getStatus())
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(exception.getRetryAfterSeconds()))
+                .body(handleApiException(exception));
     }
 
     /**
@@ -92,6 +106,13 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler
         if (exception instanceof DataIntegrityViolationException) {
             log.warn("Unmapped data integrity violation", exception);
             return problem(HttpStatus.CONFLICT, ErrorCode.DATA_CONFLICT.name(), "The request conflicts with existing data");
+        }
+        if (exception instanceof DataAccessResourceFailureException || exception instanceof QueryTimeoutException) {
+            // PostgreSQL or Redis cannot be reached or did not answer in time:
+            // not the client's fault and worth retrying, hence 503 rather than 500.
+            log.error("A backing service is unavailable", exception);
+            return problem(HttpStatus.SERVICE_UNAVAILABLE, ErrorCode.SERVICE_UNAVAILABLE.name(),
+                    "The service is temporarily unavailable. Please try again shortly");
         }
         return handleUnexpected(exception);
     }

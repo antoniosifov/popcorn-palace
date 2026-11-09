@@ -14,6 +14,7 @@ import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.BatchSize;
 
 /**
  * One physical seat in a hall. Seats are created in bulk with the hall
@@ -22,6 +23,7 @@ import lombok.NoArgsConstructor;
  */
 @Entity
 @Table(name = "seats")
+@BatchSize(size = 100) // seats referenced by a list of bookings are fetched together, not one by one
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED) // required by JPA, not for application code
 public class Seat
