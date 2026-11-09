@@ -7,7 +7,8 @@ Movie ticket booking application in a single repository.
 - `backend/` — the booking API: Java 21, Spring Boot 4, Spring Security, Spring Data JPA, Flyway, PostgreSQL, Redis, Kafka.
 - `notifications/` — a second service that reads booking events from Kafka and emails tickets.
 - `frontend/` — legacy static client for the first API version; being replaced by a Next.js + TypeScript client.
-- `compose.yml` — local stack: PostgreSQL, Redis, Kafka, Mailpit (catches the emails), the API and the notifications service.
+- `compose.yml` — local stack: PostgreSQL, Redis, Kafka, Mailpit (catches the emails), the API and the notifications service, plus Prometheus, Jaeger and Grafana to watch them.
+- `observability/` — Prometheus scrape config and the Grafana dashboard, loaded by compose.
 
 ## Run locally
 
@@ -38,7 +39,13 @@ hold or book seats from Swagger UI:
 curl -N http://localhost:8080/api/v1/showtimes/1/seats/stream
 ```
 
-If one of the ports (8080, 5432, 6379, 29092, 8025, 1025) is taken, copy `.env.example` to `.env` and change it.
+To watch the stack work, open Grafana at http://localhost:3000 (the dashboard is the home
+page; viewing needs no login) and Jaeger at http://localhost:16686: search the
+`popcorn-palace` service for the trace of your booking, and see the Kafka message and the
+notifications service's email hanging under the request that paid. Every API response
+carries that trace id in its `X-Trace-Id` header.
+
+If one of the ports (8080, 5432, 6379, 29092, 8025, 1025, 3000, 16686, 9090) is taken, copy `.env.example` to `.env` and change it.
 
 ### Run the services from your IDE instead
 
@@ -47,7 +54,7 @@ Requirements: Java 21 and Docker.
 Start only the infrastructure:
 
 ```sh
-docker compose up -d db redis kafka mailpit
+docker compose up -d db redis kafka mailpit jaeger
 ```
 
 Then start the API (and, the same way from `notifications/`, the notifications service):
