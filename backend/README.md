@@ -20,7 +20,7 @@ A movie ticket booking backend built with Java 21 and Spring Boot 4. It manages 
 - Business rules enforced by database constraints, so they hold under concurrency
 - Uniform error responses in the RFC 9457 "problem details" format with machine-readable codes
 - Observability built in: health probes, Prometheus metrics for the business (holds, bookings, payments, outbox backlog, open seat maps) as well as the runtime, and one OpenTelemetry trace from the booking request through the outbox and Kafka to the ticket email, with the trace id in every response
-- 201 automated tests, most of them calling the API over HTTP against real PostgreSQL, Redis and Kafka
+- 215 automated tests, most of them calling the API over HTTP against real PostgreSQL, Redis and Kafka
 
 ## Architecture
 
@@ -755,4 +755,4 @@ Windows:
 
 Docker must be running: the API tests start disposable PostgreSQL, Redis and Kafka containers through Testcontainers and call the application over HTTP, so they exercise JSON mapping, validation, security, transactions, migrations, constraints, the Redis scripts, the outbox, the live seat map and the management endpoints together. Rules that need no database (text normalization, request validation, sort allow-list) have plain unit tests.
 
-Current suite: **201 tests passing**. The notifications service has its own suite, see its [README](../notifications/README.md).
+Current suite: **215 tests passing**. The notifications service has its own suite, see its [README](../notifications/README.md).

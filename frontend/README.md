@@ -109,7 +109,7 @@ Two consequences worth knowing:
 
 One dark theme, like the room the product is about. Surfaces are told apart by lightness alone, without borders or shadows on cards. The single hue, the amber of a marquee bulb, is kept for the data that answers the screen's question: the customer's own seats and what they cost. Controls stay neutral; the primary action is a white pill.
 
-The hall is drawn as itself: the screen as an arc, rows centred as they are in the room, VIP seats with a headrest. Seats never shrink below 24 px, the smallest target a finger hits reliably; a hall too wide for a phone at that size scrolls sideways inside its own frame. The API holds no artwork, so each movie gets a title card drawn from its initial.
+The hall is drawn as itself: the screen as an arc, rows centred as they are in the room, VIP seats with a headrest. Seats never shrink below 24 px, the smallest target a finger hits reliably; a hall too wide for a phone at that size scrolls sideways inside its own frame. The API holds no artwork, so each movie gets a title card: a monogram of its first two letters.
 
 ## Run it
 
@@ -154,7 +154,7 @@ npm run typecheck
 npm run format:check
 ```
 
-**Unit and component tests** (87) cover the rules without a browser or a server:
+**Unit and component tests** (88) cover the rules without a browser or a server:
 
 | What                                                                              | Where                                                                      |
 | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |

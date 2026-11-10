@@ -41,6 +41,7 @@ async function MovieContent({ params }: Pick<PageProps<"/movies/[id]">, "params"
 
   const zone = cinemaZone();
   const today = dayKey(now, zone);
+  const next = showtimes[0];
   const byDay = new Map<DayKey, Showtime[]>();
   for (const showtime of showtimes) {
     const day = dayKey(showtime.startTime, zone);
@@ -56,9 +57,9 @@ async function MovieContent({ params }: Pick<PageProps<"/movies/[id]">, "params"
         </Link>
       </p>
 
-      <header className="card mb-3.5 flex items-center gap-5">
+      <header className="card mb-3.5 flex flex-wrap items-center gap-5">
         <Poster title={movie.title} size="large" />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="text-title font-semibold tracking-[-0.01em]">{movie.title}</h1>
           <p className="mt-1 text-muted">
             {movie.genre} · {formatDuration(movie.durationMinutes)} · {movie.releaseYear}
@@ -69,6 +70,20 @@ async function MovieContent({ params }: Pick<PageProps<"/movies/[id]">, "params"
             <span className="ml-1 text-label font-normal text-muted">of 10</span>
           </p>
         </div>
+        {next ? (
+          // The answer to "when can I see it" and the way there, beside the movie it is about.
+          <div className="w-full md:w-auto md:text-right">
+            <p className="text-label text-muted">Next showing</p>
+            <p className="mt-0.5 text-section font-semibold">
+              {relativeDayLabel(dayKey(next.startTime, zone), today)},{" "}
+              <span className="num">{formatTime(next.startTime, zone)}</span>
+            </p>
+            <p className="text-muted">{next.hallName}</p>
+            <Link href={`/showtimes/${next.id}`} prefetch={false} className="btn btn-primary mt-3 w-full md:w-auto">
+              Choose seats
+            </Link>
+          </div>
+        ) : null}
       </header>
 
       <section className="card" aria-labelledby="showtimes-heading">

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import type { Booking } from "./api/types";
 import { bookingGroup, bookingReference, bookingStatus, canCancel } from "./booking-status";
+import { monogram } from "@/components/poster";
+
 import { describeProblem } from "./errors";
 import { loginPath, safeNextPath } from "./paths";
 import { PAYMENT_METHODS, settlesAttempt } from "./payment";
@@ -167,5 +169,16 @@ describe("where a booking stands", () => {
 
   it("has a short reference to read out", () => {
     expect(bookingReference(booking({}))).toBe("860324E2");
+  });
+});
+
+describe("the title card of a movie", () => {
+  it("is a monogram of the first two letters, past a leading article", () => {
+    expect(monogram("Interstellar")).toBe("In");
+    expect(monogram("The Grand Budapest Hotel")).toBe("Gr");
+    expect(monogram("Dune: Part Two")).toBe("Du");
+    expect(monogram("2001: A Space Odyssey")).toBe("20");
+    expect(monogram("M")).toBe("M");
+    expect(monogram("…")).toBe("P");
   });
 });

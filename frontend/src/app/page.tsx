@@ -65,8 +65,8 @@ async function Programme({ searchParams }: Pick<PageProps<"/">, "searchParams">)
         }
       />
 
-      {/* Seven days side by side at every width: named and counted where there is room, a week strip on a phone. */}
-      <nav aria-label="Day" className="mb-3.5 grid grid-cols-7 gap-1.5 md:gap-2">
+      {/* Seven days side by side at every width: named and counted where there is room (from 1024px), a week strip below that. */}
+      <nav aria-label="Day" className="mb-3.5 grid grid-cols-7 gap-1.5 lg:gap-2">
         {days.map((day) => {
           const showtimesThatDay = byDay.get(day)?.length ?? 0;
           const current = day === selected;
@@ -78,14 +78,14 @@ async function Programme({ searchParams }: Pick<PageProps<"/">, "searchParams">)
               href={day === firstBusy ? "/" : `/?day=${day}`}
               aria-current={current ? "page" : undefined}
               aria-label={`${label}, ${count(showtimesThatDay, "showtime")}`}
-              className={`rounded-inner border-[1.5px] px-1 py-2 text-center transition-colors duration-150 md:px-3 md:py-2.5 md:text-left ${
+              className={`rounded-inner border-[1.5px] px-1 py-2 text-center transition-colors duration-150 lg:px-3 lg:py-2.5 lg:text-left ${
                 current ? "border-accent bg-accent-tint" : "border-transparent bg-surface hover:bg-well"
               }`}
             >
-              <span className="block text-label text-muted md:hidden">{weekday}</span>
-              <span className="num block text-section font-semibold md:hidden">{dayOfMonth}</span>
-              <span className="hidden text-label text-muted md:block">{label}</span>
-              <span className="num hidden text-section font-semibold md:block">
+              <span className="block text-label text-muted lg:hidden">{weekday}</span>
+              <span className="num block text-section font-semibold lg:hidden">{dayOfMonth}</span>
+              <span className="hidden text-label text-muted lg:block">{label}</span>
+              <span className="num hidden text-section font-semibold lg:block">
                 {showtimesThatDay}
                 <span className="ml-1 text-label font-normal text-muted">
                   {showtimesThatDay === 1 ? "showtime" : "showtimes"}
@@ -108,7 +108,7 @@ async function Programme({ searchParams }: Pick<PageProps<"/">, "searchParams">)
             {programme.map(({ movie, title, showtimes: times }) => (
               <li
                 key={title}
-                className="grid gap-x-4 gap-y-3 border-t border-rule py-4 first:border-t-0 first:pt-0 last:pb-0 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+                className="grid gap-x-4 gap-y-3 border-t border-rule py-4 first:border-t-0 first:pt-0 last:pb-0 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
               >
                 <div className="flex min-w-0 items-center gap-4">
                   <Poster title={title} />
@@ -130,7 +130,7 @@ async function Programme({ searchParams }: Pick<PageProps<"/">, "searchParams">)
                     ) : null}
                   </div>
                 </div>
-                <ul className="flex flex-wrap gap-2 md:max-w-[620px] md:justify-end">
+                <ul className="flex flex-wrap gap-2 lg:max-w-[620px] lg:justify-end">
                   {times.map((showtime) => (
                     <li key={showtime.id}>
                       <ShowtimeLink showtime={showtime} zone={zone} />
@@ -187,9 +187,9 @@ function ProgrammeSkeleton() {
   return (
     <>
       <TitleRow title="Now showing" sub={<span className="skeleton inline-block h-4 w-80 max-w-full align-middle" />} />
-      <div className="mb-3.5 grid grid-cols-7 gap-1.5 md:gap-2">
+      <div className="mb-3.5 grid grid-cols-7 gap-1.5 lg:gap-2">
         {Array.from({ length: DAYS }, (_, index) => (
-          <div key={index} className="skeleton h-[62px] rounded-inner md:h-[66px]" />
+          <div key={index} className="skeleton h-[62px] rounded-inner lg:h-[66px]" />
         ))}
       </div>
       <div className="card">
