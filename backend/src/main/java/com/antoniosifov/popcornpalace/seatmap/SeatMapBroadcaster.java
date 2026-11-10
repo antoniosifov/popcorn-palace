@@ -1,6 +1,8 @@
 package com.antoniosifov.popcornpalace.seatmap;
 
 import com.antoniosifov.popcornpalace.hall.SeatStatusChanged;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,10 +42,13 @@ public class SeatMapBroadcaster
     private final JsonMapper jsonMapper;
     private final SeatMapStreamProperties properties;
 
-    public SeatMapBroadcaster(JsonMapper jsonMapper, SeatMapStreamProperties properties)
+    public SeatMapBroadcaster(JsonMapper jsonMapper, SeatMapStreamProperties properties, MeterRegistry registry)
     {
         this.jsonMapper = jsonMapper;
         this.properties = properties;
+        Gauge.builder("popcorn.seatmap.streams", this, SeatMapBroadcaster::streamCount)
+                .description("Browsers watching a live seat map on this instance")
+                .register(registry);
     }
 
     /** Opens a stream for one showtime. The browser receives every change until it disconnects. */
@@ -113,6 +118,12 @@ public class SeatMapBroadcaster
     {
         Set<SseEmitter> streams = streamsByShowtime.get(showtimeId);
         return streams == null ? 0 : streams.size();
+    }
+
+    /** How many browsers are watching any showtime right now, on this instance. */
+    public int streamCount()
+    {
+        return streamsByShowtime.values().stream().mapToInt(Set::size).sum();
     }
 
     /** Closes every stream, so browsers reconnect (to another instance, during a deployment). */

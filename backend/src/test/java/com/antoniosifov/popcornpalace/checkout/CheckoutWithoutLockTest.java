@@ -4,6 +4,7 @@ import com.antoniosifov.popcornpalace.booking.BookingService;
 import com.antoniosifov.popcornpalace.hold.HoldProperties;
 import com.antoniosifov.popcornpalace.hold.SeatHoldStore;
 import com.antoniosifov.popcornpalace.payment.FakePaymentProvider;
+import com.antoniosifov.popcornpalace.payment.PaymentMetrics;
 import com.antoniosifov.popcornpalace.payment.PaymentService;
 import com.antoniosifov.popcornpalace.security.CurrentUser;
 import com.antoniosifov.popcornpalace.support.ApiIntegrationTest;
@@ -40,6 +41,8 @@ class CheckoutWithoutLockTest extends ApiIntegrationTest
     private BookingService bookingService;
     @Autowired
     private org.springframework.data.redis.core.StringRedisTemplate redisTemplate;
+    @Autowired
+    private PaymentMetrics paymentMetrics;
 
     @DisplayName("Without the lock, simultaneous payments for one hold end as one booking and one net charge")
     @Test
@@ -51,7 +54,7 @@ class CheckoutWithoutLockTest extends ApiIntegrationTest
         UUID holdId = UUID.fromString(createHold(customerToken, showtimeId, seatId(hallId, 1, 1), seatId(hallId, 1, 2)));
 
         CheckoutService withoutLock = new CheckoutService(holdStore, holdProperties, new AlwaysFreeLock(),
-                paymentService, paymentProvider, bookingService);
+                paymentService, paymentProvider, paymentMetrics, bookingService);
         CurrentUser customer = new CurrentUser(CUSTOMER_ID, Role.CUSTOMER);
         CheckoutRequest slowCard = new CheckoutRequest(FakePaymentProvider.TOKEN_SLOW);
 

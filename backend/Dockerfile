@@ -20,5 +20,6 @@ RUN addgroup -S app && adduser -S app -G app
 COPY --from=build /workspace/target/popcorn-palace-*.jar app.jar
 USER app
 
-EXPOSE 8080
+# 8080: the API. 8081: health and metrics, for the stack only.
+EXPOSE 8080 8081
 ENTRYPOINT ["java", "-jar", "app.jar"]

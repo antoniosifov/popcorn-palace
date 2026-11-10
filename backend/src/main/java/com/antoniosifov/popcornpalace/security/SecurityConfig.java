@@ -36,6 +36,8 @@ public class SecurityConfig
     /** Nested under showtimes, but for customers, not for managing the catalog. */
     private static final String[] CHECKOUT = {"/api/v1/showtimes/*/holds", "/api/v1/showtimes/*/holds/**"};
     private static final String[] API_DOCS = {"/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"};
+    /** Health and metrics. Served on the management port, which is not published outside the stack. */
+    private static final String[] MANAGEMENT = {"/actuator/**"};
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, ProblemSecurityHandlers problemHandlers) throws Exception
@@ -50,6 +52,7 @@ public class SecurityConfig
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/register", "/api/v1/auth/login").permitAll()
                         .requestMatchers(API_DOCS).permitAll()
+                        .requestMatchers(MANAGEMENT).permitAll()
                         // Must come before the catalog rules below: the first matching rule wins.
                         .requestMatchers(CHECKOUT).authenticated()
                         .requestMatchers(HttpMethod.GET, CATALOG).permitAll()

@@ -1,10 +1,13 @@
 package com.antoniosifov.popcornpalace.notifications;
 
-import org.springframework.mail.SimpleMailMessage;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
@@ -15,13 +18,18 @@ public class TicketMailer
     private static final DateTimeFormatter WHEN =
             DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy, HH:mm", Locale.ENGLISH);
 
+    /** Names the trace of the booking request that led to the email. */
+    static final String TRACE_HEADER = "X-Popcorn-Trace-Id";
+
     private final JavaMailSender mailSender;
     private final NotificationProperties properties;
+    private final Tracer tracer;
 
-    public TicketMailer(JavaMailSender mailSender, NotificationProperties properties)
+    public TicketMailer(JavaMailSender mailSender, NotificationProperties properties, Tracer tracer)
     {
         this.mailSender = mailSender;
         this.properties = properties;
+        this.tracer = tracer;
     }
 
     public void sendTickets(BookingEvent event)
@@ -60,12 +68,19 @@ public class TicketMailer
 
     private void send(BookingEvent event, String subject, String text)
     {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(properties.from());
-        message.setTo(event.customer().email());
-        message.setSubject(subject);
-        message.setText(text);
-        mailSender.send(message);
+        Span span = tracer.currentSpan();
+        mailSender.send(message -> {
+            MimeMessageHelper helper = new MimeMessageHelper(message, StandardCharsets.UTF_8.name());
+            helper.setFrom(properties.from());
+            helper.setTo(event.customer().email());
+            helper.setSubject(subject);
+            helper.setText(text);
+            if (span != null) {
+                // The same id the booking request answered with (X-Trace-Id): one
+                // trace from the click to the email, findable from either end.
+                message.setHeader(TRACE_HEADER, span.context().traceId());
+            }
+        });
     }
 
     private static String greeting(BookingEvent event)

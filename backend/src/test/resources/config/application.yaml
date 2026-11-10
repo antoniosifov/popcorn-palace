@@ -5,3 +5,10 @@ app:
     # Tests publish the outbox themselves, at the moment they choose, so the
     # background relay must not race them.
     relay-interval: PT1H
+
+management:
+  tracing:
+    export:
+      otlp:
+        # No collector runs during tests; exporting would only log failures.
+        enabled: false

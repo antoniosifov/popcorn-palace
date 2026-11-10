@@ -5,6 +5,7 @@ import com.antoniosifov.popcornpalace.support.ApiIntegrationTest;
 import com.antoniosifov.popcornpalace.support.KafkaTestConsumer;
 import com.antoniosifov.popcornpalace.support.SimultaneousRequests;
 import com.jayway.jsonpath.JsonPath;
+import io.micrometer.observation.ObservationRegistry;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -54,6 +55,10 @@ class OutboxTest extends ApiIntegrationTest
     private OutboxProperties outboxProperties;
     @Autowired
     private Clock clock;
+    @Autowired
+    private ObservationRegistry observations;
+    @Autowired
+    private OutboxMetrics outboxMetrics;
 
     private long hallId;
     private long showtimeId;
@@ -163,7 +168,7 @@ class OutboxTest extends ApiIntegrationTest
         when(unreachableKafka.send(any(org.apache.kafka.clients.producer.ProducerRecord.class)))
                 .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("broker unreachable")));
         OutboxRelay relayDuringOutage =
-                new OutboxRelay(jdbcTemplate, unreachableKafka, transactionManager, outboxProperties, clock);
+                new OutboxRelay(jdbcTemplate, unreachableKafka, transactionManager, outboxProperties, observations, outboxMetrics, clock);
 
         assertThatThrownBy(relayDuringOutage::publishPending).isInstanceOf(OutboxRelay.OutboxPublishException.class);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_events WHERE published_at IS NULL", Long.class)).isEqualTo(1);
@@ -186,8 +191,8 @@ class OutboxTest extends ApiIntegrationTest
                     UUID.randomUUID(), topic, "key-" + (i % 5), "{\"n\": " + i + "}");
         }
         // Small batches, so the relays have to take turns many times.
-        OutboxProperties smallBatches = new OutboxProperties(Duration.ofHours(1), 7, Duration.ofSeconds(10), Duration.ofDays(7));
-        OutboxRelay smallBatchRelay = new OutboxRelay(jdbcTemplate, realKafka, transactionManager, smallBatches, clock);
+        OutboxProperties smallBatches = new OutboxProperties(Duration.ofHours(1), 7, Duration.ofSeconds(10), Duration.ofDays(7), Duration.ofMinutes(2));
+        OutboxRelay smallBatchRelay = new OutboxRelay(jdbcTemplate, realKafka, transactionManager, smallBatches, observations, outboxMetrics, clock);
 
         // Four "instances" keep publishing until each finds nothing left to do.
         List<Integer> publishedByEachRelay = SimultaneousRequests.run(4, () -> {

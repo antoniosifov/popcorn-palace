@@ -1,9 +1,15 @@
+server:
+  # No API of its own: the only thing served over HTTP is health and metrics,
+  # on a port that is not published outside the stack.
+  port: ${MANAGEMENT_PORT:8081}
+  # Finish the event in hand before stopping.
+  shutdown: graceful
+
 spring:
   application:
     name: popcorn-palace-notifications
-  main:
-    # No HTTP server: this service only consumes from Kafka.
-    web-application-type: none
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
     consumer:
@@ -15,9 +21,15 @@ spring:
     listener:
       # Commit the position after each event: a crash re-delivers at most that one.
       ack-mode: record
+      # Each event is handled inside the trace it carries (the traceparent header the
+      # booking API sets), so the request, the message and the email are one trace.
+      observation-enabled: true
     producer:
       # Used only to move events that cannot be processed to the dead-letter topic.
       acks: all
+    template:
+      # A message moved to the dead-letter topic keeps its trace.
+      observation-enabled: true
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -46,3 +58,53 @@ app:
     # is moved to the dead-letter topic.
     max-retries: 3
     retry-interval: PT2S
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+      group:
+        # Ready when it can read events and remember them. A mail server outage
+        # is retried per event, not a reason to take the service down.
+        readiness:
+          include: kafka,redis
+  info:
+    env:
+      enabled: true
+  metrics:
+    tags:
+      # Every metric says which application it comes from (a common tag on every meter).
+      application: popcorn-palace-notifications
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+    export:
+      otlp:
+        enabled: ${TRACING_EXPORT_ENABLED:true}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+  otlp:
+    metrics:
+      export:
+        # Metrics are scraped by Prometheus from /actuator/prometheus, not pushed.
+        enabled: false
+
+info:
+  app:
+    name: Popcorn Palace Notifications
+    description: Emails tickets for confirmed bookings and notices for cancelled ones
+
+logging:
+  structured:
+    format:
+      # "ecs" or "logstash" prints one JSON object per line, for log collectors; empty keeps the readable layout.
+      console: ${LOG_FORMAT:}

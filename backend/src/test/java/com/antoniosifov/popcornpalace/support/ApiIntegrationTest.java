@@ -2,12 +2,15 @@ package com.antoniosifov.popcornpalace.support;
 
 import com.antoniosifov.popcornpalace.TestcontainersConfiguration;
 import com.antoniosifov.popcornpalace.auth.TokenService;
+import com.antoniosifov.popcornpalace.common.observability.TraceIdFilter;
 import com.antoniosifov.popcornpalace.payment.FakePaymentProvider;
 import com.antoniosifov.popcornpalace.user.Role;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
+import jakarta.servlet.Filter;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -19,6 +22,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.ResultMatcher;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
+import org.springframework.web.filter.ServerHttpObservationFilter;
 
 import javax.sql.DataSource;
 import java.time.Duration;
@@ -80,6 +84,9 @@ public abstract class ApiIntegrationTest
     protected TokenService tokenService;
 
     @Autowired
+    private TraceIdFilter traceIdFilter;
+
+    @Autowired
     protected StringRedisTemplate redis;
 
     /** The sandbox payment provider; tests read what it "charged" and make it fail. */
@@ -117,11 +124,24 @@ public abstract class ApiIntegrationTest
         customerToken = tokenService.issue(CUSTOMER_ID, Role.CUSTOMER).value();
         otherCustomerToken = tokenService.issue(OTHER_CUSTOMER_ID, Role.CUSTOMER).value();
 
-        anonymous = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+        // A real server adds these filters by itself; MockMvc only adds what it is told to.
+        Filter[] filters = {observationFilter(), traceIdFilter};
+        anonymous = MockMvcBuilders.webAppContextSetup(context).addFilters(filters).apply(springSecurity()).build();
         mvc = MockMvcBuilders.webAppContextSetup(context)
+                .addFilters(filters)
                 .apply(springSecurity())
                 .defaultRequest(get("/").header(HttpHeaders.AUTHORIZATION, bearer(adminToken)))
                 .build();
+    }
+
+    /** The filter that starts a trace and times every request. */
+    private Filter observationFilter()
+    {
+        return context.getBeansOfType(FilterRegistrationBean.class).values().stream()
+                .map(registration -> (Filter) registration.getFilter())
+                .filter(ServerHttpObservationFilter.class::isInstance)
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("The request observation filter is not registered"));
     }
 
     protected void insertUser(UUID id, String email, String displayName, Role role)

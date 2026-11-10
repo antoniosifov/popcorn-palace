@@ -1,0 +1,12 @@
+# Dashboards are loaded from files, so they live in git next to the code they watch.
+apiVersion: 1
+
+providers:
+  - name: Popcorn Palace
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

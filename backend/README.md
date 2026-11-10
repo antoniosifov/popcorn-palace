@@ -19,7 +19,8 @@ A movie ticket booking backend built with Java 21 and Spring Boot 4. It manages 
 - Database schema owned by Flyway migrations that carry existing data forward; Hibernate only validates it
 - Business rules enforced by database constraints, so they hold under concurrency
 - Uniform error responses in the RFC 9457 "problem details" format with machine-readable codes
-- 192 automated tests, most of them calling the API over HTTP against real PostgreSQL, Redis and Kafka
+- Observability built in: health probes, Prometheus metrics for the business (holds, bookings, payments, outbox backlog, open seat maps) as well as the runtime, and one OpenTelemetry trace from the booking request through the outbox and Kafka to the ticket email, with the trace id in every response
+- 201 automated tests, most of them calling the API over HTTP against real PostgreSQL, Redis and Kafka
 
 ## Architecture
 
@@ -37,6 +38,7 @@ flowchart LR
     Kafka --> Notifications["Notifications service<br/>ticket emails"]
     Redis -- pub/sub, expired holds --> Stream["Live seat map<br/>server-sent events"]
     Stream --> Client
+    Service -. metrics, traces .-> Watch["Prometheus · Jaeger · Grafana"]
     Controller -. errors .-> Handler["ApiExceptionHandler<br/>problem details"]
     Service -. errors .-> Handler
     Database -. constraint violations .-> Handler
@@ -56,7 +58,7 @@ src/main/java/com/antoniosifov/popcornpalace/
 ├── user/        # accounts
 ├── auth/        # registration, login, token issuing
 ├── security/    # who may call what, token verification
-└── common/      # error handling, pagination, configuration
+└── common/      # error handling, pagination, configuration, observability
 src/main/resources/db/migration/   # Flyway SQL migrations
 ```
 
@@ -72,6 +74,7 @@ Packages depend on each other in one direction only: `checkout` → `hold` → `
 | Persistence | Spring Data JPA, Hibernate 7, PostgreSQL 17, Flyway |
 | Holds and rate limits | Redis 8, Spring Data Redis, Lua scripts |
 | Events | Kafka 4.2 (KRaft), Spring Kafka, transactional outbox |
+| Observability | Spring Boot Actuator, Micrometer, Prometheus, OpenTelemetry (OTLP), Jaeger, Grafana |
 | Testing | JUnit 5, MockMvc, Testcontainers (PostgreSQL, Redis, Kafka), AssertJ |
 | Tooling | Maven Wrapper, Docker, Docker Compose, GitHub Actions, Lombok |
 
@@ -337,11 +340,12 @@ Every error is an `application/problem+json` response ([RFC 9457](https://www.rf
   "detail": "Some of the seats are being booked by another customer",
   "instance": "/api/v1/showtimes/1/holds",
   "code": "SEAT_ALREADY_HELD",
-  "seatIds": [101]
+  "seatIds": [101],
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
 }
 ```
 
-Seat conflicts carry `seatIds`, so a client can mark exactly the seats that were lost.
+Seat conflicts carry `seatIds`, so a client can mark exactly the seats that were lost. Every error names its `traceId`, the same value every response carries in the `X-Trace-Id` header: quote it when reporting a problem, and the logs and spans of that very request can be found by it (see [Observability](#observability)).
 
 Validation failures list every rejected field:
 
@@ -589,6 +593,64 @@ flowchart LR
 
 `SeatMapStreamTest` opens streams through MockMvc and checks that every change made through the API arrives in order, that an expired hold is reported without anyone in the application being involved, that a message published on the channel by "another instance" reaches this instance's browsers, that streams of other showtimes stay quiet, and that a closed browser is forgotten.
 
+## Observability
+
+Three questions an operator asks: is it up, how is it doing, and what happened to this one request. Each has its own answer, all served on a management port (8081) that is reachable inside the stack only, never through the public API port.
+
+### Health
+
+| Endpoint | Who asks | What it says |
+| --- | --- | --- |
+| `/actuator/health/liveness` | the platform, to restart a stuck instance | the process is alive |
+| `/actuator/health/readiness` | the platform and the compose health check, to route traffic | PostgreSQL and Redis answer. Kafka being down is survivable (bookings wait in the outbox), so it does not make the instance unready |
+| `/actuator/health` | a person | every component: `db`, `redis`, `kafka` (a custom indicator; Boot has none), `outbox`, disk space |
+
+The `outbox` component turns `DOWN` when an event has waited longer than `app.outbox.stale-after` (two minutes): bookings are being made and nobody hears about them. It is deliberately not part of readiness, since taking the API out of service would help nobody.
+
+### Metrics
+
+`/actuator/prometheus` serves everything Micrometer collects, labelled `application="popcorn-palace"`. Besides the runtime (JVM, Hikari pool, Tomcat, Kafka producer, request timings per endpoint with histogram buckets for percentiles), the application reports what the business is doing:
+
+| Metric | Kind | Meaning |
+| --- | --- | --- |
+| `popcorn_holds_total{result}` | counter | seat holds `created`, `refused` (seats taken) or `released` without paying |
+| `popcorn_bookings_total{outcome}` | counter | bookings `confirmed` and `cancelled`; counted after the commit, so a rolled-back booking is not one |
+| `popcorn_payments_total{outcome}` | counter | `charged`, `declined`, `provider_error`, `refunded` |
+| `popcorn_payments_charged_amount_sum{currency}`, `popcorn_payments_refunded_amount_sum{currency}` | summary | money taken and given back; the difference is revenue |
+| `popcorn_outbox_pending_events`, `popcorn_outbox_oldest_event_age_seconds` | gauge | the outbox backlog; both near zero while Kafka is reachable |
+| `popcorn_outbox_published_events_total`, `popcorn_outbox_publish_failures_total` | counter | what the relay delivered and how often Kafka did not acknowledge |
+| `popcorn_seatmap_streams` | gauge | browsers watching a live seat map on this instance |
+
+The local stack scrapes both services with Prometheus and draws them in Grafana (`observability/grafana/dashboards/popcorn-palace.json`, loaded from the file at start): bookings and revenue, request rate and latency percentiles, holds and payments by outcome, the outbox backlog, the notifications service's consumer lag and emails, heap and the connection pool.
+
+### Traces
+
+A booking is one request to the API, but what it causes spreads out in time and across processes: the event is written to the outbox, sent to Kafka by the relay on its own thread later, read by the notifications service, which sends the email. All of it is one trace:
+
+```mermaid
+flowchart LR
+    R["POST .../confirm<br/>(server span)"] --> O[("outbox row<br/>traceparent")]
+    O --> P["outbox publish<br/>(relay, later)"] --> K["Kafka send"]
+    K -. traceparent header .-> C["notifications: consume"] --> M["SMTP send"]
+```
+
+- **Every request is a trace.** Micrometer Observation times it for the metrics and the OpenTelemetry bridge records it as a span; the id goes back to the client in `X-Trace-Id` and inside error bodies as `traceId`. Spring Security's per-filter spans are switched off, and actuator requests and the runs of scheduled jobs are not observed at all, so a trace shows only what happened for a request.
+- **The outbox carries the trace.** `Outbox.append` stores the request's W3C `traceparent` in the row (`trace_parent`, migration `V7`). When `OutboxRelay` sends the event, perhaps seconds later and on another instance, it opens an observation whose parent is that stored context, so the Kafka producer span hangs under the original request. Spring Kafka then puts `traceparent` on the message, and the notifications service continues it: its consumer span, the email and its log lines all carry the same trace id, which the email itself repeats in an `X-Popcorn-Trace-Id` header.
+- **Exported over OTLP.** Spans go to whatever listens at `OTLP_TRACES_ENDPOINT`: Jaeger in the local stack (http://localhost:16686, "popcorn-palace" service), any OpenTelemetry collector in production. Nothing is sampled away by default (`TRACING_SAMPLING_PROBABILITY=1.0`); lower it when the load is real.
+
+### Logs
+
+Every log line names the application, trace and span (`[popcorn-palace,4bf92f35…,00f067aa…]`), so `grep` by trace id across both services gives the story of one booking. With `LOG_FORMAT=ecs` both services print one JSON object per line instead (Elastic Common Schema), which log collectors take as they are.
+
+| What can go wrong | What happens |
+| --- | --- |
+| The trace collector is down | Spans are dropped after a short retry; the request is served as usual, the logs still carry the trace id |
+| Prometheus stops scraping | Nothing; metrics are pulled, the application does not depend on anyone reading them |
+| Kafka is down | `/actuator/health` shows `kafka` and, after two minutes, `outbox` as `DOWN`; readiness stays `UP` and bookings continue |
+| The management port is exposed by mistake | Nothing secret is served (no environment, no heap dumps): health, info, metrics only |
+
+`ObservabilityTest` starts the application in a real server and checks the management port: health with every component, both probes, metrics with request timings and the business counters, the trace id in the response header and in a problem body, and that none of it is served on the API port. `TracingTest` books seats through the API and reads the message back from Kafka: its `traceparent` header names the trace of the HTTP request.
+
 ## Migrations
 
 | Version | What it does |
@@ -618,6 +680,8 @@ docker compose up --build
 ```
 
 The API listens on http://localhost:8080 and Flyway creates the schema on first start. Compose also creates a development administrator, `admin@popcorn.local` with the password `admin-dev-password`; change both in `.env` (see `.env.example`) for anything that is not your own machine.
+
+The stack watches itself: Grafana at http://localhost:3000 (the dashboard opens as the home page, no login needed to view), Jaeger at http://localhost:16686 (search the `popcorn-palace` service and open the trace of a confirmed hold: the Kafka send and the notifications service's email hang under it), Prometheus at http://localhost:9090.
 
 ### API from your IDE
 
@@ -658,6 +722,11 @@ Windows:
 | `JWT_TTL` | Lifetime of an access token (ISO-8601 duration) | `PT1H` |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Administrator created at startup if missing | none outside compose |
 | `CORS_ALLOWED_ORIGIN_PATTERNS` | Browser origins allowed to call the API | any `localhost` port |
+| `MANAGEMENT_PORT` | Health, info and metrics; keep it inside the network | `8081` |
+| `OTLP_TRACES_ENDPOINT` | Where spans are sent (OTLP over HTTP) | `http://localhost:4318/v1/traces` |
+| `TRACING_EXPORT_ENABLED` | Set to `false` where nothing collects spans | `true` |
+| `TRACING_SAMPLING_PROBABILITY` | Share of requests that are traced, `0.0` to `1.0` | `1.0` |
+| `LOG_FORMAT` | Empty for readable logs, `ecs` for one JSON object per line | empty |
 
 ## Tests
 
@@ -673,6 +742,6 @@ Windows:
 .\mvnw.cmd verify
 ```
 
-Docker must be running: the API tests start disposable PostgreSQL, Redis and Kafka containers through Testcontainers and call the application over HTTP, so they exercise JSON mapping, validation, security, transactions, migrations, constraints, the Redis scripts, the outbox and the live seat map together. Rules that need no database (text normalization, request validation, sort allow-list) have plain unit tests.
+Docker must be running: the API tests start disposable PostgreSQL, Redis and Kafka containers through Testcontainers and call the application over HTTP, so they exercise JSON mapping, validation, security, transactions, migrations, constraints, the Redis scripts, the outbox, the live seat map and the management endpoints together. Rules that need no database (text normalization, request validation, sort allow-list) have plain unit tests.
 
-Current suite: **192 tests passing**. The notifications service has its own suite, see its [README](../notifications/README.md).
+Current suite: **201 tests passing**. The notifications service has its own suite, see its [README](../notifications/README.md).

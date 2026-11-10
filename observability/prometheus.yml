@@ -1,0 +1,12 @@
+# Prometheus for the local stack: scrapes both services on their management
+# port, which is reachable inside the compose network only.
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+
+scrape_configs:
+  - job_name: popcorn-palace
+    metrics_path: /actuator/prometheus
+    static_configs:
+      # Each service labels its own metrics with "application", so one job is enough.
+      - targets: ["api:8081", "notifications:8081"]

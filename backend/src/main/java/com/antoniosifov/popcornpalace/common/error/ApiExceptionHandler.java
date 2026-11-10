@@ -1,8 +1,10 @@
 package com.antoniosifov.popcornpalace.common.error;
 
+import com.antoniosifov.popcornpalace.common.ratelimit.RateLimitExceededException;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.antoniosifov.popcornpalace.common.ratelimit.RateLimitExceededException;
 import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataAccessResourceFailureException;
@@ -37,7 +39,8 @@ import java.util.Optional;
  *   "status": 409,
  *   "detail": "Seat 15 is already booked for this showtime",
  *   "instance": "/api/v1/bookings",
- *   "code": "SEAT_ALREADY_BOOKED"
+ *   "code": "SEAT_ALREADY_BOOKED",
+ *   "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
  * }
  * }</pre>
  *
@@ -51,6 +54,14 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler
 
     private static final String CODE = "code";
     private static final String ERRORS = "errors";
+    private static final String TRACE_ID = "traceId";
+
+    private final Tracer tracer;
+
+    public ApiExceptionHandler(Tracer tracer)
+    {
+        this.tracer = tracer;
+    }
 
     @ExceptionHandler(ApiException.class)
     ProblemDetail handleApiException(ApiException exception)
@@ -169,9 +180,12 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler
             Exception exception, Object body, HttpHeaders headers, HttpStatusCode status, WebRequest request)
     {
         ResponseEntity<Object> response = super.handleExceptionInternal(exception, body, headers, status, request);
-        if (response != null && response.getBody() instanceof ProblemDetail problem && !hasCode(problem)) {
-            HttpStatus resolved = HttpStatus.resolve(status.value());
-            problem.setProperty(CODE, resolved != null ? resolved.name() : "HTTP_" + status.value());
+        if (response != null && response.getBody() instanceof ProblemDetail problem) {
+            if (!hasCode(problem)) {
+                HttpStatus resolved = HttpStatus.resolve(status.value());
+                problem.setProperty(CODE, resolved != null ? resolved.name() : "HTTP_" + status.value());
+            }
+            withTraceId(problem);
         }
         return response;
     }
@@ -181,10 +195,23 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler
         return problem.getProperties() != null && problem.getProperties().containsKey(CODE);
     }
 
-    private static ProblemDetail problem(HttpStatus status, String code, String detail)
+    private ProblemDetail problem(HttpStatus status, String code, String detail)
     {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
         problem.setProperty(CODE, code);
+        return withTraceId(problem);
+    }
+
+    /**
+     * Names the trace of the request, the same id the {@code X-Trace-Id} header
+     * carries, so a reported error can be matched to its logs and spans.
+     */
+    private ProblemDetail withTraceId(ProblemDetail problem)
+    {
+        Span span = tracer.currentSpan();
+        if (span != null) {
+            problem.setProperty(TRACE_ID, span.context().traceId());
+        }
         return problem;
     }
 }

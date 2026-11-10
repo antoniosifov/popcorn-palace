@@ -1,15 +1,22 @@
 server:
   port: 8080
+  # Finish the requests in flight before stopping (a deployment, a restart).
+  shutdown: graceful
 
 spring:
   application:
     name: popcorn-palace
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/popcorn-palace}
     username: ${DB_USERNAME:popcorn-palace}
     password: ${DB_PASSWORD:popcorn-palace}
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
+    template:
+      # Every message carries the trace it belongs to (W3C traceparent header).
+      observation-enabled: true
     producer:
       # Wait for every in-sync replica, and let the broker drop duplicates caused
       # by the producer's own retries, so one send is one message.
@@ -69,6 +76,8 @@ app:
     send-timeout: PT10S
     # Published events are kept this long, then deleted.
     retention: P7D
+    # The outbox reports itself unhealthy when an event has waited longer than this.
+    stale-after: PT2M
   seatmap:
     # A browser's live seat stream is closed after this long; the browser reconnects by itself.
     stream-timeout: ${SEATMAP_STREAM_TIMEOUT:PT30M}
@@ -103,7 +112,68 @@ app:
       email: ${ADMIN_EMAIL:}
       password: ${ADMIN_PASSWORD:}
 
+management:
+  server:
+    # Health, info and metrics on their own port, which is not published outside the stack.
+    port: ${MANAGEMENT_PORT:8081}
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+      group:
+        # Ready to take requests when the database and Redis answer. Kafka being
+        # down is survivable (bookings wait in the outbox), so it is reported but not required.
+        readiness:
+          include: db,redis
+  info:
+    env:
+      enabled: true
+  metrics:
+    tags:
+      # Every metric says which application it comes from (a common tag on every meter).
+      application: popcorn-palace
+    distribution:
+      percentiles-histogram:
+        # Buckets, so latency percentiles can be computed in Prometheus across instances.
+        "[http.server.requests]": true
+  observations:
+    enable:
+      # One span per request is enough; Spring Security's own span per filter only adds noise.
+      "[spring.security]": false
+  tracing:
+    sampling:
+      # Record every trace; lower it when the load is real.
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+    export:
+      otlp:
+        enabled: ${TRACING_EXPORT_ENABLED:true}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          # Where spans go (OTLP over HTTP): Jaeger in the local stack.
+          endpoint: ${OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+  otlp:
+    metrics:
+      export:
+        # Metrics are scraped by Prometheus from /actuator/prometheus, not pushed.
+        enabled: false
+
+info:
+  app:
+    name: Popcorn Palace API
+    description: Movie ticket booking API
+
 logging:
+  structured:
+    format:
+      # "ecs" or "logstash" prints one JSON object per line, for log collectors; empty keeps the readable layout.
+      console: ${LOG_FORMAT:}
   level:
     # Hibernate logs every constraint violation as an error. Here they are an
     # expected outcome (the loser of a race for a seat or a time slot) and are

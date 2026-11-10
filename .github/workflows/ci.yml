@@ -69,3 +69,11 @@ jobs:
       # Catches mistakes in compose.yml without starting anything.
       - name: Validate compose file
         run: docker compose config --quiet
+
+      - name: Validate Prometheus configuration
+        run: >
+          docker run --rm -v "$PWD/observability/prometheus.yml:/prometheus.yml:ro"
+          --entrypoint promtool prom/prometheus:v3.16.0 check config /prometheus.yml
+
+      - name: Validate Grafana dashboard
+        run: python3 -m json.tool observability/grafana/dashboards/popcorn-palace.json > /dev/null
