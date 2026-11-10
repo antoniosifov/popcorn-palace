@@ -102,6 +102,11 @@ services:
       DEMO_DATA: ${DEMO_DATA:-true}
       CINEMA_TIME_ZONE: ${CINEMA_TIME_ZONE:-UTC}
       PAYMENT_CURRENCY: ${PAYMENT_CURRENCY:-USD}
+      # With a TMDB key the catalog is the films in cinemas now, with posters,
+      # descriptions and trailers; without one, a small built-in catalog.
+      TMDB_API_KEY: ${TMDB_API_KEY:-}
+      TMDB_REGION: ${TMDB_REGION:-US}
+      TMDB_LANGUAGE: ${TMDB_LANGUAGE:-en-US}
       # Development defaults; override them in .env (see .env.example).
       JWT_SECRET: ${JWT_SECRET:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@popcorn.local}

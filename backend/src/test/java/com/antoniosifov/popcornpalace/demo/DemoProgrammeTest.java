@@ -171,6 +171,38 @@ class DemoProgrammeTest extends ApiIntegrationTest
         assertThat(ofThatMovieInThatHall).isEqualTo(8);
     }
 
+    @DisplayName("When the catalog knows what is in cinemas, only those movies get showtimes")
+    @Test
+    void schedulesOnlyWhatIsInCinemas() throws Exception
+    {
+        long classic = createMovie("Arrival");
+        long playing = createMovie("Lanterns at Low Tide");
+        jdbc.update("UPDATE movies SET tmdb_id = 101, in_cinemas = TRUE, popularity = 91.5 WHERE id = ?", playing);
+        createHall("Hall 1");
+
+        int added = programmeAt(MORNING, 1).topUp();
+
+        assertThat(added).isEqualTo(4);
+        Integer ofTheClassic = jdbc.queryForObject("SELECT count(*) FROM showtimes WHERE movie_id = ?", Integer.class, classic);
+        Integer ofWhatIsPlaying = jdbc.queryForObject("SELECT count(*) FROM showtimes WHERE movie_id = ?", Integer.class, playing);
+        assertThat(ofTheClassic).isZero();
+        assertThat(ofWhatIsPlaying).isEqualTo(4);
+    }
+
+    @DisplayName("The built-in movies come with a description and their makers, and no artwork")
+    @Test
+    void builtInMoviesAreDescribed() throws Exception
+    {
+        programmeAt(MORNING, 1).topUp();
+
+        mvc.perform(get(MOVIES).param("sort", "title,asc").param("size", "1"))
+                .andExpect(jsonPath("$.content[0].title").value("Blade Runner 2049"))
+                .andExpect(jsonPath("$.content[0].overview").isNotEmpty())
+                .andExpect(jsonPath("$.content[0].director").value("Denis Villeneuve"))
+                .andExpect(jsonPath("$.content[0].starring[0]").value("Ryan Gosling"))
+                .andExpect(jsonPath("$.content[0].posterUrl").isEmpty());
+    }
+
     @DisplayName("A day that already has a showtime in a hall is left as it is")
     @Test
     void leavesADayThatHasShowtimesAlone() throws Exception
