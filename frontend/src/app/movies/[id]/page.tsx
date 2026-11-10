@@ -1,16 +1,20 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Suspense } from "react";
+import { Suspense, type CSSProperties } from "react";
 
 import { Poster } from "@/components/poster";
-import { Empty } from "@/components/ui";
-import { getMovie, listShowtimes } from "@/lib/api/catalog";
+import { displaySize, HeroStill } from "@/components/still";
+import { Trailer } from "@/components/trailer";
+import { safeLink } from "@/lib/artwork";
+import { getMovie, listMovies, listShowtimes } from "@/lib/api/catalog";
 import { ApiError } from "@/lib/api/client";
 import type { Movie, Showtime } from "@/lib/api/types";
 import { cinemaZone, currency } from "@/lib/config";
 import { formatMoney } from "@/lib/money";
-import { dayKey, formatDuration, formatTime, relativeDayLabel, type DayKey } from "@/lib/time";
 import { requestTime } from "@/lib/request-time";
+import { dayKey, formatDuration, formatTime, relativeDayLabel, type DayKey } from "@/lib/time";
+
+const order = (position: number) => ({ "--order": position }) as CSSProperties;
 
 export default function MoviePage({ params }: PageProps<"/movies/[id]">) {
   return (
@@ -37,70 +41,106 @@ async function MovieContent({ params }: Pick<PageProps<"/movies/[id]">, "params"
     throw error;
   }
   const now = await requestTime();
-  const showtimes = await listShowtimes({ movieId, from: now });
+  // The rest of the programme is an invitation, not the page: if it cannot be read, the film is still shown.
+  const [showtimes, catalog] = await Promise.all([
+    listShowtimes({ movieId, from: now }),
+    listMovies().catch((): Movie[] => []),
+  ]);
+  const alsoShowing = pickAlsoShowing(catalog, movie);
 
   const zone = cinemaZone();
   const today = dayKey(now, zone);
   const next = showtimes[0];
+  const trailer = safeLink(movie.trailerUrl);
   const byDay = new Map<DayKey, Showtime[]>();
   for (const showtime of showtimes) {
     const day = dayKey(showtime.startTime, zone);
     byDay.set(day, [...(byDay.get(day) ?? []), showtime]);
   }
+  const facts = [movie.genre, formatDuration(movie.durationMinutes), String(movie.releaseYear)];
 
   return (
     <>
       <title>{`${movie.title} · Popcorn Palace`}</title>
-      <p className="mb-3 text-label">
-        <Link href="/" className="link-quiet">
-          Now showing
-        </Link>
-      </p>
 
-      <header className="card mb-3.5 flex flex-wrap items-center gap-5">
-        <Poster title={movie.title} size="large" />
-        <div className="min-w-0 flex-1">
-          <h1 className="text-title font-semibold tracking-[-0.01em]">{movie.title}</h1>
-          <p className="mt-1 text-muted">
-            {movie.genre} · {formatDuration(movie.durationMinutes)} · {movie.releaseYear}
+      <section className={movie.backdropUrl ? "hero hero-short" : "hero hero-plain"} aria-label="The film">
+        <HeroStill title={movie.title} url={movie.backdropUrl} />
+        <div className="column relative pb-10 pt-40 md:pb-14">
+          <h1 className={`display ${displaySize(movie.title)} arrive`}>{movie.title}</h1>
+          <p className="copy arrive mt-5 max-w-[56ch] text-section md:mt-7" style={order(1)}>
+            {facts.join(" · ")}
+            {next
+              ? `. Next showing ${relativeDayLabel(dayKey(next.startTime, zone), today).toLowerCase()} at ${formatTime(next.startTime, zone)} in the ${next.hallName}.`
+              : ". No showtimes are scheduled right now."}
           </p>
-          <p className="mt-4 text-label text-muted">Rated</p>
-          <p className="num text-figure font-medium">
-            {movie.rating.toFixed(1)}
-            <span className="ml-1 text-label font-normal text-muted">of 10</span>
-          </p>
-        </div>
-        {next ? (
-          // The answer to "when can I see it" and the way there, beside the movie it is about.
-          <div className="w-full md:w-auto md:text-right">
-            <p className="text-label text-muted">Next showing</p>
-            <p className="mt-0.5 text-section font-semibold">
-              {relativeDayLabel(dayKey(next.startTime, zone), today)},{" "}
-              <span className="num">{formatTime(next.startTime, zone)}</span>
-            </p>
-            <p className="text-muted">{next.hallName}</p>
-            <Link href={`/showtimes/${next.id}`} prefetch={false} className="btn btn-primary mt-3 w-full md:w-auto">
-              Choose seats
-            </Link>
+          <div className="arrive mt-7 flex flex-wrap items-center gap-x-7 gap-y-4" style={order(2)}>
+            {next ? (
+              <Link href={`/showtimes/${next.id}`} prefetch={false} className="btn btn-primary btn-large">
+                Choose seats
+              </Link>
+            ) : null}
+            {trailer ? <Trailer title={movie.title} url={trailer} /> : null}
           </div>
-        ) : null}
-      </header>
+        </div>
+      </section>
 
-      <section className="card" aria-labelledby="showtimes-heading">
-        <h2 id="showtimes-heading" className="mb-4 text-section font-semibold">
+      <section className="column mt-20 grid gap-x-8 gap-y-10 md:mt-32 md:grid-cols-12" aria-labelledby="about">
+        <div className="rise md:col-span-4">
+          <Poster
+            title={movie.title}
+            url={movie.posterUrl}
+            sizes="(min-width: 768px) 32vw, 70vw"
+            className="w-[70%] md:w-full"
+            eager
+          />
+        </div>
+        <div className="md:col-span-7 md:col-start-6">
+          <h2 id="about" className="display display-head rise">
+            {movie.tagline ?? "About the film"}
+          </h2>
+          {movie.overview ? (
+            <p className="copy rise mt-7 max-w-[60ch] text-section leading-[1.6]">{movie.overview}</p>
+          ) : (
+            <p className="copy rise mt-7 max-w-[60ch] text-section leading-[1.6] text-muted">
+              No description has been written for this film yet.
+            </p>
+          )}
+          <dl className="rise mt-10 grid gap-x-10 gap-y-6 sm:grid-cols-2">
+            {movie.director ? <Credit label="Directed by" value={movie.director} /> : null}
+            {movie.starring.length > 0 ? <Credit label="Starring" value={movie.starring.join(", ")} /> : null}
+            {movie.rating > 0 ? (
+              <Credit
+                label="Rated"
+                value={
+                  <>
+                    <span className="num">{movie.rating.toFixed(1)}</span> out of 10
+                  </>
+                }
+              />
+            ) : null}
+            <Credit label="Runs" value={formatDuration(movie.durationMinutes)} />
+          </dl>
+        </div>
+      </section>
+
+      <section className="column mt-28 md:mt-44" aria-labelledby="showtimes-heading">
+        <h2 id="showtimes-heading" className="display display-head rise">
           Showtimes
         </h2>
         {byDay.size === 0 ? (
-          <Empty>No showtimes are scheduled for this movie right now.</Empty>
+          <p className="rise mt-10 rounded-card bg-surface px-6 py-14 text-center text-section">
+            No showtimes are scheduled for this film right now.
+          </p>
         ) : (
-          <ul>
+          <ul className="mt-10 grid gap-2.5 md:mt-14">
             {[...byDay.entries()].map(([day, times]) => (
               <li
                 key={day}
-                className="grid gap-x-6 gap-y-2.5 border-t border-rule py-3.5 first:border-t-0 first:pt-0 last:pb-0 md:grid-cols-[150px_minmax(0,1fr)] md:items-center"
+                className="rise grid gap-x-8 gap-y-4 rounded-card bg-surface px-6 py-6 md:grid-cols-12 md:items-center md:px-8"
               >
-                <h3 className="font-medium">{relativeDayLabel(day, today)}</h3>
-                <ul className="flex flex-wrap gap-2">
+                <h3 className="display text-[1.75rem] md:col-span-3">{relativeDayLabel(day, today)}</h3>
+                {/* The times are the product's own controls, not labels of the page. */}
+                <ul data-ui className="flex flex-wrap gap-2.5 md:col-span-9">
                   {times.map((showtime) => {
                     const prices = Object.values(showtime.prices);
                     return (
@@ -108,9 +148,9 @@ async function MovieContent({ params }: Pick<PageProps<"/movies/[id]">, "params"
                         <Link
                           href={`/showtimes/${showtime.id}`}
                           prefetch={false}
-                          className="btn btn-secondary h-10 gap-2.5"
+                          className="btn btn-secondary h-11 gap-3 px-5"
                         >
-                          <span className="num font-semibold">{formatTime(showtime.startTime, zone)}</span>
+                          <span className="num text-body font-semibold">{formatTime(showtime.startTime, zone)}</span>
                           <span className="font-normal text-muted">{showtime.hallName}</span>
                           {prices.length ? (
                             <span className="num font-normal text-muted">
@@ -127,22 +167,60 @@ async function MovieContent({ params }: Pick<PageProps<"/movies/[id]">, "params"
           </ul>
         )}
       </section>
+
+      {alsoShowing.length > 0 ? (
+        <section className="column mt-28 md:mt-44" aria-labelledby="also-showing">
+          <h2 id="also-showing" className="display display-head rise">
+            Also showing
+          </h2>
+          {/* A row to swipe along on a phone, with the next poster showing at the edge; five across on a wide screen. */}
+          <ul className="-mx-4 mt-10 flex snap-x gap-4 overflow-x-auto px-4 pb-2 md:mx-0 md:mt-14 md:grid md:grid-cols-5 md:gap-6 md:overflow-visible md:px-0 md:pb-0">
+            {alsoShowing.map((other) => (
+              <li key={other.id} className="rise w-[42%] min-w-0 flex-none snap-start md:w-auto">
+                <Link href={`/movies/${other.id}`} className="group block">
+                  <Poster title={other.title} url={other.posterUrl} sizes="(min-width: 768px) 220px, 42vw" />
+                  <span className="mt-3 block font-medium leading-snug group-hover:underline">{other.title}</span>
+                  <span className="mt-1 block text-label text-muted">{other.genre}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </>
+  );
+}
+
+/**
+ * Up to five other films to offer from a film's page: the ones in cinemas now
+ * when the catalog knows which those are, most popular first, then best rated.
+ */
+function pickAlsoShowing(catalog: Movie[], current: Movie): Movie[] {
+  const others = catalog.filter((movie) => movie.id !== current.id);
+  const inCinemas = others.filter((movie) => movie.inCinemas);
+  return (inCinemas.length > 0 ? inCinemas : others)
+    .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0) || b.rating - a.rating || a.id - b.id)
+    .slice(0, 5);
+}
+
+/** Who made it, how long it runs: a name for the fact and the fact, set as a pair. */
+function Credit({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <dt className="text-label text-muted">{label}</dt>
+      <dd className="mt-1 text-section">{value}</dd>
+    </div>
   );
 }
 
 function MovieSkeleton() {
   return (
-    <>
-      <div className="skeleton mb-3 h-[18px] w-28" />
-      <div className="card mb-3.5 flex items-center gap-5">
-        <div className="skeleton h-[180px] w-[120px] flex-none" />
-        <div className="grid flex-1 gap-2">
-          <div className="skeleton h-7 w-64 max-w-full" />
-          <div className="skeleton h-5 w-72 max-w-full" />
-        </div>
+    <section className="hero hero-short" aria-hidden="true">
+      <div className="column relative pb-10 pt-40 md:pb-14">
+        <div className="skeleton h-[clamp(3rem,9vw,8rem)] w-[min(70%,820px)]" />
+        <div className="skeleton mt-7 h-6 w-[min(80%,520px)]" />
+        <div className="skeleton mt-7 h-12 w-40 rounded-full" />
       </div>
-      <div className="card h-[200px]" />
-    </>
+    </section>
   );
 }

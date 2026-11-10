@@ -6,7 +6,9 @@ The part of Popcorn Palace a customer opens in a browser: the programme, a live 
 
 ## Highlights
 
+- A first screen that is tonight's film: its still, its title, the next showing, and one press to the seats
 - The programme for the next seven days, on the cinema's clock whatever time zone the visitor or the server is in
+- A page for every film: poster, description, director and cast, the trailer played on the page, every showtime, and the rest of the programme
 - A seat map that is live: seats other customers hold, release or buy change on screen as it happens, without a reload
 - Checkout in two steps that match the API: hold the seats for ten minutes with a countdown, then pay
 - Payments that cannot charge twice: one idempotency key per attempt, kept across retries and page reloads
@@ -107,9 +109,15 @@ Two consequences worth knowing:
 
 ## Design
 
-One dark theme, like the room the product is about. Surfaces are told apart by lightness alone, without borders or shadows on cards. The single hue, the amber of a marquee bulb, is kept for the data that answers the screen's question: the customer's own seats and what they cost. Controls stay neutral; the primary action is a white pill.
+A cinema at night. The first screen is tonight's film: its still fills the screen, its title is set along the bottom edge in a serif (Sentient) at the size of a film title, and the next showing is one press from the seats. Below it the week is a strip of seven days, and every film of the chosen day is a row: the poster, what it is about, and its showtimes as the controls they are.
 
-The hall is drawn as itself: the screen as an arc, rows centred as they are in the room, VIP seats with a headrest. Seats never shrink below 24 px, the smallest target a finger hits reliably; a hall too wide for a phone at that size scrolls sideways inside its own frame. The API holds no artwork, so each movie gets a title card: a monogram of its first two letters.
+One dark theme. Surfaces are told apart by lightness alone, without borders or shadows on cards. One hue, the brass of a foyer, is kept for the primary action and for what is the customer's own: their seats and what they cost. Prices and halls are set on a printed sheet with a ticket's scalloped edge, the one light surface of the site. Sentences meant to be read are set in the serif; everything that is operated or scanned (times, prices, forms, the seat map, the back office) is in Inter with tabular figures.
+
+Pictures come from TMDB's servers in the size a screen needs: a TMDB picture's address contains its width, so `srcset` is built from the widths TMDB serves ([`lib/artwork.ts`](src/lib/artwork.ts)), and only `https` addresses are ever put on a page. A film without artwork (the built-in catalogue has none) gets a drawn title card, a monogram of its first two letters, and a film without a still gets a first screen made of type alone. The trailer plays over the page it was asked for on; nothing is requested from YouTube until a visitor asks for the trailer, and then from the address that sets no cookies before play. Underneath it is a plain link, which is what a browser without scripts, or a trailer that is not on YouTube, gets.
+
+Motion is quiet, with one loud moment: the still of the first screen opens like a shutter. Parts of a page rise into place the first time they are scrolled to, once ([`components/reveals.tsx`](src/components/reveals.tsx)): an animation held on its first frame, so nothing is written into the markup and the page is whole without scripts. A visitor who asked for less motion gets none.
+
+The hall is drawn as itself: the screen as an arc, rows centred as they are in the room, VIP seats with a headrest. Seats never shrink below 24 px, the smallest target a finger hits reliably; a hall too wide for a phone at that size scrolls sideways inside its own frame.
 
 ## Run it
 
@@ -154,7 +162,7 @@ npm run typecheck
 npm run format:check
 ```
 
-**Unit and component tests** (88) cover the rules without a browser or a server:
+**Unit and component tests** (98) cover the rules without a browser or a server:
 
 | What                                                                              | Where                                                                      |
 | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
@@ -163,10 +171,12 @@ npm run format:check
 | Every step from picking to paying, including events that overtake answers         | [`lib/booking-state.test.ts`](src/lib/booking-state.test.ts)               |
 | The API client: tokens, problems, an unreachable API                              | [`lib/api/client.test.ts`](src/lib/api/client.test.ts)                     |
 | Error messages, idempotency keys, safe redirects, booking status                  | [`lib/errors.test.ts`](src/lib/errors.test.ts)                             |
+| Pictures at every width, addresses that are refused, the trailer's id             | [`lib/artwork.test.ts`](src/lib/artwork.test.ts)                           |
 | The seat picker as a customer uses it, with the stream and the server replaced    | [`components/seat-booking.test.tsx`](src/components/seat-booking.test.tsx) |
 
-**End-to-end tests** (12) drive Chromium against the stack that `docker compose` starts, and run in CI on every pull request:
+**End-to-end tests** (13) drive Chromium against the stack that `docker compose` starts, and run in CI on every pull request:
 
+- a visitor opens a film's page from the programme and goes on from it to another film;
 - a customer registers, picks seats, pays, sees the ticket, and the email arrives (browser to API to Kafka to the notifications service to the mail catcher);
 - two browsers on one showtime: a seat one customer holds, releases and buys changes in the other's window without a reload;
 - a picked seat taken by somebody else leaves the order;
@@ -186,12 +196,13 @@ src/
 ├── app/                  routes: the programme, movies, showtimes, bookings, login, admin
 │   └── api/              route handlers: the live seat stream, the seat map, health
 ├── actions/              Server Actions: auth, checkout, admin
-├── components/           the seat map and checkout, forms, navigation
+├── components/           the seat map and checkout, posters and stills, the trailer, forms, navigation
 └── lib/
     ├── api/              the API client and the shapes it returns
     ├── booking-state.ts  the reducer behind the seat picker
     ├── seatmap.ts        seat events, picking, totals
     ├── time.ts           instants and the cinema's clock
+    ├── artwork.ts        pictures at the size a screen needs, and which addresses are let onto a page
     └── errors.ts         API problems as sentences
 e2e/                      Playwright tests
 ```

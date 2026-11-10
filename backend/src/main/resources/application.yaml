@@ -113,6 +113,21 @@ app:
     days: 7
     # The time zone of the cinema: demo showtimes start at 11:00, 14:15, 17:30 and 20:45 on its clock.
     zone: ${CINEMA_TIME_ZONE:UTC}
+  tmdb:
+    # Films in cinemas now, with posters, descriptions and trailers, imported
+    # from TMDB (https://www.themoviedb.org). The "API Read Access Token" of a
+    # TMDB account, or its older, shorter API key. Empty: the import is off and
+    # the built-in catalog is used.
+    api-key: ${TMDB_API_KEY:}
+    base-url: ${TMDB_BASE_URL:https://api.themoviedb.org/3}
+    image-base-url: https://image.tmdb.org/t/p
+    # Titles and descriptions in this language; cinemas of this country.
+    language: ${TMDB_LANGUAGE:en-US}
+    region: ${TMDB_REGION:US}
+    # How many movies the programme takes, the most popular first.
+    limit: ${TMDB_LIMIT:16}
+    # How often the list is fetched again.
+    sync-interval: PT12H
   security:
     jwt:
       # HS256 signing key, at least 32 characters. Leave empty to generate a random

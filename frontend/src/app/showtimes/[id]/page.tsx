@@ -6,7 +6,7 @@ import { Suspense } from "react";
 import { Poster } from "@/components/poster";
 import { SeatBooking } from "@/components/seat-booking";
 import { getMyHold } from "@/lib/api/bookings";
-import { getSeatMap, getShowtime } from "@/lib/api/catalog";
+import { getMovie, getSeatMap, getShowtime } from "@/lib/api/catalog";
 import { ApiError } from "@/lib/api/client";
 import type { Showtime } from "@/lib/api/types";
 import { loginPath } from "@/lib/paths";
@@ -43,17 +43,19 @@ async function ShowtimeContent({ params }: Pick<PageProps<"/showtimes/[id]">, "p
     throw error;
   }
   // With a token the seat map marks the caller's own seats, and a hold made earlier is picked up again.
-  const [map, hold] = await Promise.all([
+  const [map, hold, movie] = await Promise.all([
     getSeatMap(showtimeId, token),
     token ? getMyHold(showtimeId, token).catch(() => null) : null,
+    // Only for its poster: the page works without it.
+    getMovie(showtime.movieId).catch(() => null),
   ]);
 
   const zone = cinemaZone();
   const started = new Date(showtime.startTime).getTime() <= (await requestTime()).getTime();
 
   return (
-    <>
-      <p className="mb-3 text-label">
+    <div className="column page-top">
+      <p className="mb-4 text-label">
         <Link href="/" className="link-quiet">
           Now showing
         </Link>
@@ -63,11 +65,11 @@ async function ShowtimeContent({ params }: Pick<PageProps<"/showtimes/[id]">, "p
         </Link>
       </p>
 
-      <header className="card mb-3.5 flex items-center gap-4 p-3.5">
-        <Poster title={showtime.movieTitle} size="header" />
+      <header className="mb-6 flex items-center gap-5">
+        <Poster title={showtime.movieTitle} url={movie?.posterUrl} sizes="72px" className="w-[72px] flex-none" eager />
         <div className="min-w-0">
-          <h1 className="truncate text-title font-semibold tracking-[-0.01em]">{showtime.movieTitle}</h1>
-          <p className="mt-0.5 text-muted">
+          <h1 className="display display-row">{showtime.movieTitle}</h1>
+          <p className="mt-2 text-muted">
             {formatDay(showtime.startTime, zone)} · <span className="num">{formatTime(showtime.startTime, zone)}</span>
             {" to "}
             <span className="num">{formatTime(showtime.endTime, zone)}</span> · {showtime.hallName}
@@ -86,16 +88,16 @@ async function ShowtimeContent({ params }: Pick<PageProps<"/showtimes/[id]">, "p
         currency={currency()}
         started={started}
       />
-    </>
+    </div>
   );
 }
 
 function ShowtimeSkeleton() {
   return (
-    <>
-      <div className="skeleton mb-3 h-[18px] w-48" />
-      <div className="card mb-3.5 flex items-center gap-4 p-3.5">
-        <div className="skeleton h-[62px] w-[50px] flex-none" />
+    <div className="column page-top">
+      <div className="skeleton mb-4 h-5 w-48" />
+      <div className="mb-6 flex items-center gap-5">
+        <div className="skeleton h-[108px] w-[72px] flex-none" />
         <div className="grid flex-1 gap-2">
           <div className="skeleton h-7 w-64 max-w-full" />
           <div className="skeleton h-5 w-80 max-w-full" />
@@ -105,6 +107,6 @@ function ShowtimeSkeleton() {
         <div className="card h-[460px]" />
         <div className="card h-[220px]" />
       </div>
-    </>
+    </div>
   );
 }

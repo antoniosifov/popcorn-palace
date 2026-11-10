@@ -77,6 +77,90 @@ class MovieApiTest extends ApiIntegrationTest
                 .andExpect(jsonPath("$.detail").value("Request body is missing or malformed"));
     }
 
+    @DisplayName("A movie can carry a description, artwork, a trailer and its makers, and gives them back")
+    @Test
+    void storesHowAMovieIsPresented() throws Exception
+    {
+        postJson(MOVIES, """
+                {"title": "Interstellar", "genre": "Science Fiction", "durationMinutes": 169, "rating": 8.7, "releaseYear": 2014,
+                 "overview": "  A team of explorers   travels through a wormhole.  ",
+                 "tagline": "Mankind was born on Earth.",
+                 "posterUrl": "https://image.tmdb.org/t/p/w500/poster.jpg",
+                 "backdropUrl": "https://image.tmdb.org/t/p/w1280/backdrop.jpg",
+                 "trailerUrl": "https://www.youtube.com/watch?v=zSWdZVtXT7E",
+                 "director": "Christopher Nolan",
+                 "starring": ["Matthew McConaughey", " Anne  Hathaway "]}
+                """)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.overview").value("A team of explorers travels through a wormhole."))
+                .andExpect(jsonPath("$.tagline").value("Mankind was born on Earth."))
+                .andExpect(jsonPath("$.posterUrl").value("https://image.tmdb.org/t/p/w500/poster.jpg"))
+                .andExpect(jsonPath("$.backdropUrl").value("https://image.tmdb.org/t/p/w1280/backdrop.jpg"))
+                .andExpect(jsonPath("$.trailerUrl").value("https://www.youtube.com/watch?v=zSWdZVtXT7E"))
+                .andExpect(jsonPath("$.director").value("Christopher Nolan"))
+                .andExpect(jsonPath("$.starring[0]").value("Matthew McConaughey"))
+                .andExpect(jsonPath("$.starring[1]").value("Anne Hathaway"))
+                // Added by hand, so nobody claims it is in cinemas.
+                .andExpect(jsonPath("$.inCinemas").value(false))
+                .andExpect(jsonPath("$.popularity").isEmpty());
+    }
+
+    @DisplayName("All of that is optional, and a field cleared in a form is the same as a field left out")
+    @Test
+    void presentationIsOptional() throws Exception
+    {
+        postJson(MOVIES, movieJson("Interstellar"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.overview").isEmpty())
+                .andExpect(jsonPath("$.posterUrl").isEmpty())
+                .andExpect(jsonPath("$.starring.length()").value(0));
+
+        putJson(MOVIES + "/1", """
+                {"title": "Interstellar", "genre": "Science Fiction", "durationMinutes": 169, "rating": 8.7, "releaseYear": 2014,
+                 "overview": "   ", "posterUrl": "", "trailerUrl": ""}
+                """)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.overview").isEmpty())
+                .andExpect(jsonPath("$.posterUrl").isEmpty())
+                .andExpect(jsonPath("$.trailerUrl").isEmpty());
+    }
+
+    @DisplayName("PUT replaces the presentation too: what is left out is gone")
+    @Test
+    void putReplacesThePresentation() throws Exception
+    {
+        postJson(MOVIES, """
+                {"title": "Interstellar", "genre": "Science Fiction", "durationMinutes": 169, "rating": 8.7, "releaseYear": 2014,
+                 "overview": "A description.", "director": "Christopher Nolan", "starring": ["Matthew McConaughey"]}
+                """).andExpect(status().isCreated());
+
+        putJson(MOVIES + "/1", """
+                {"title": "Interstellar", "genre": "Science Fiction", "durationMinutes": 169, "rating": 8.7, "releaseYear": 2014,
+                 "overview": "Another description."}
+                """)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.overview").value("Another description."))
+                .andExpect(jsonPath("$.director").isEmpty())
+                .andExpect(jsonPath("$.starring.length()").value(0));
+    }
+
+    @DisplayName("An address that is not https is refused: it would end up in the page as a picture or a link")
+    @Test
+    void rejectsAddressesThatAreNotHttps() throws Exception
+    {
+        for (String address : new String[] {"javascript:alert(1)", "http://example.com/poster.jpg", "data:image/png;base64,AAAA",
+                "//example.com/poster.jpg", "https://example.com/a b.jpg"}) {
+            postJson(MOVIES, """
+                    {"title": "Interstellar", "genre": "Science Fiction", "durationMinutes": 169, "rating": 8.7, "releaseYear": 2014,
+                     "posterUrl": "%s", "trailerUrl": "%s"}
+                    """.formatted(address, address))
+                    .andExpect(problem(400, "VALIDATION_FAILED"))
+                    .andExpect(jsonPath("$.errors[0].field").value("posterUrl"))
+                    .andExpect(jsonPath("$.errors[0].message").value("must be an https address"))
+                    .andExpect(jsonPath("$.errors[1].field").value("trailerUrl"));
+        }
+    }
+
     @DisplayName("Two movies cannot share a title")
     @Test
     void rejectsDuplicateTitle() throws Exception

@@ -40,6 +40,18 @@ export async function saveMovie(_previous: AdminFormState, form: FormData): Prom
     durationMinutes: numberOrNull(text(form, "durationMinutes")),
     rating: numberOrNull(text(form, "rating")),
     releaseYear: numberOrNull(text(form, "releaseYear")),
+    // How the movie is presented. All optional: an empty field is sent as empty and stored as nothing.
+    overview: text(form, "overview"),
+    tagline: text(form, "tagline"),
+    posterUrl: text(form, "posterUrl"),
+    backdropUrl: text(form, "backdropUrl"),
+    trailerUrl: text(form, "trailerUrl"),
+    director: text(form, "director"),
+    // One name per comma: "Matthew McConaughey, Anne Hathaway".
+    starring: text(form, "starring")
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean),
   };
   // The API validates every field and names the ones it rejects.
   const result = await asUser((token) => (id ? admin.updateMovie(id, input, token) : admin.createMovie(input, token)));

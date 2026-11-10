@@ -38,9 +38,25 @@ export type Movie = {
   durationMinutes: number;
   rating: number;
   releaseYear: number;
+  /** What the movie is about. Everything from here down is optional: a movie may have none of it. */
+  overview: string | null;
+  tagline: string | null;
+  /** An https address of the poster (2:3). Movies imported from TMDB have one; the built-in catalog does not. */
+  posterUrl: string | null;
+  /** An https address of a wide still. */
+  backdropUrl: string | null;
+  trailerUrl: string | null;
+  director: string | null;
+  /** The leading cast, most prominent first. */
+  starring: string[];
+  /** Whether the movie is playing in cinemas right now, according to the latest import. */
+  inCinemas: boolean;
+  /** How much attention the movie gets at its source; null for a movie added by hand. */
+  popularity: number | null;
 };
 
-export type MovieInput = Omit<Movie, "id">;
+/** What an administrator can set. Where a movie came from and how popular it is are not theirs to edit. */
+export type MovieInput = Omit<Movie, "id" | "inCinemas" | "popularity">;
 
 /** A form as it was typed: any field may still be empty. The API says which ones must not be. */
 export type Draft<T> = { [K in keyof T]: T[K] | null };
@@ -129,7 +145,9 @@ export type Booking = {
   id: string;
   status: BookingStatus;
   showtimeId: number;
+  movieId: number;
   movieTitle: string;
+  moviePosterUrl: string | null;
   hallName: string;
   startTime: string;
   seats: Ticket[];

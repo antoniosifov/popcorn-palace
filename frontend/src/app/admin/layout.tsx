@@ -18,11 +18,13 @@ async function AdministratorsOnly({ children }: { children: React.ReactNode }) {
 
 export default function AdminLayout({ children }: LayoutProps<"/admin">) {
   return (
-    <Suspense fallback={<div className="skeleton h-[320px] rounded-card" />}>
-      <AdministratorsOnly>
-        <AdminTabs />
-        {children}
-      </AdministratorsOnly>
-    </Suspense>
+    <div className="column page-top">
+      <Suspense fallback={<div className="skeleton h-[320px] rounded-card" />}>
+        <AdministratorsOnly>
+          <AdminTabs />
+          {children}
+        </AdministratorsOnly>
+      </Suspense>
+    </div>
   );
 }

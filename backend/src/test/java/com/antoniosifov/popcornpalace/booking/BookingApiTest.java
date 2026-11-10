@@ -63,6 +63,9 @@ class BookingApiTest extends ApiIntegrationTest
                 .andExpect(jsonPath("$.cancelledAt").doesNotExist())
                 .andExpect(jsonPath("$.showtimeId").value(showtimeId))
                 .andExpect(jsonPath("$.movieTitle").value("Interstellar"))
+                .andExpect(jsonPath("$.movieId").value(movieId))
+                // The movie has no artwork here; with a poster, the booking carries its address.
+                .andExpect(jsonPath("$.moviePosterUrl").isEmpty())
                 .andExpect(jsonPath("$.hallName").value("Hall 1"))
                 .andExpect(jsonPath("$.startTime").value(START))
                 // Tickets are listed in hall order, whatever order the seats were picked in.

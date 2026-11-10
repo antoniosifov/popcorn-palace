@@ -46,7 +46,10 @@ import java.util.Set;
  *
  * <ul>
  *   <li>halls and movies are created only while there are none at all, so a
- *       catalog somebody manages by hand is never touched;</li>
+ *       catalog somebody manages by hand, or one imported from TMDB, is never
+ *       touched;</li>
+ *   <li>when the catalog knows which movies are in cinemas (the TMDB import
+ *       says so), only those get new showtimes;</li>
  *   <li>a hall gets a day of showtimes only if nothing starts in it that day,
  *       so the programme rolls forward one day at a time and leaves alone
  *       every day that already has something, whoever scheduled it.</li>
@@ -92,15 +95,43 @@ public class DemoProgramme implements ApplicationRunner
             new HallRequest("Screening Room", List.of(
                     new HallRequest.Section(5, 8, SeatCategory.STANDARD))));
 
+    /**
+     * The built-in catalog, for an installation without a TMDB key. No posters:
+     * artwork is not this project's to hand out, so the client draws title cards.
+     */
     private static final List<MovieRequest> MOVIES = List.of(
-            movie("Interstellar", "Science Fiction", 169, "8.7", 2014),
-            movie("Spirited Away", "Animation", 125, "8.6", 2001),
-            movie("Parasite", "Thriller", 132, "8.5", 2019),
-            movie("Dune: Part Two", "Science Fiction", 166, "8.5", 2024),
-            movie("Whiplash", "Drama", 106, "8.5", 2014),
-            movie("The Grand Budapest Hotel", "Comedy", 99, "8.1", 2014),
-            movie("Mad Max: Fury Road", "Action", 120, "8.1", 2015),
-            movie("Blade Runner 2049", "Science Fiction", 164, "8.0", 2017));
+            movie("Interstellar", "Science Fiction", 169, "8.7", 2014,
+                    "With Earth running out of food, a former pilot leaves his children to fly through a wormhole "
+                            + "in search of a planet people could live on, while time passes far faster at home.",
+                    "Christopher Nolan", "Matthew McConaughey", "Anne Hathaway", "Jessica Chastain"),
+            movie("Spirited Away", "Animation", 125, "8.6", 2001,
+                    "A ten-year-old girl wanders into a bathhouse for spirits, where her parents are turned into pigs "
+                            + "and she has to work, and keep her name, to free them.",
+                    "Hayao Miyazaki", "Rumi Hiiragi", "Miyu Irino", "Mari Natsuki"),
+            movie("Parasite", "Thriller", 132, "8.5", 2019,
+                    "A family living in a basement flat talks its way, one job at a time, into the home of a wealthy "
+                            + "household, until somebody else turns out to live there too.",
+                    "Bong Joon Ho", "Song Kang-ho", "Lee Sun-kyun", "Cho Yeo-jeong"),
+            movie("Dune: Part Two", "Science Fiction", 166, "8.5", 2024,
+                    "Paul Atreides joins the Fremen of the desert planet Arrakis to take revenge on those who "
+                            + "destroyed his family, and is drawn toward a war he has seen coming.",
+                    "Denis Villeneuve", "Timothée Chalamet", "Zendaya", "Rebecca Ferguson"),
+            movie("Whiplash", "Drama", 106, "8.5", 2014,
+                    "A young drummer at a top conservatory is pushed past every limit by a teacher who believes "
+                            + "that greatness only comes out of fear.",
+                    "Damien Chazelle", "Miles Teller", "J.K. Simmons"),
+            movie("The Grand Budapest Hotel", "Comedy", 99, "8.1", 2014,
+                    "The concierge of a famous hotel between the wars and his lobby boy are caught up in the theft "
+                            + "of a priceless painting and the fight over a family fortune.",
+                    "Wes Anderson", "Ralph Fiennes", "Tony Revolori", "Saoirse Ronan"),
+            movie("Mad Max: Fury Road", "Action", 120, "8.1", 2015,
+                    "In a desert wasteland, a drifter and a rebel driver flee a warlord in an armoured truck, "
+                            + "carrying the women he kept captive.",
+                    "George Miller", "Tom Hardy", "Charlize Theron", "Nicholas Hoult"),
+            movie("Blade Runner 2049", "Science Fiction", 164, "8.0", 2017,
+                    "A new blade runner digs up a secret that could end what is left of order, and goes looking "
+                            + "for a predecessor who vanished thirty years ago.",
+                    "Denis Villeneuve", "Ryan Gosling", "Harrison Ford", "Ana de Armas"));
 
     private final DemoProperties properties;
     private final MovieService movieService;
@@ -150,7 +181,7 @@ public class DemoProgramme implements ApplicationRunner
         createCatalogIfEmpty();
 
         List<Hall> halls = hallRepository.findAll(Sort.by("id"));
-        List<Movie> movies = movieRepository.findAll(Sort.by("id"));
+        List<Movie> movies = moviesToShow();
         if (halls.isEmpty() || movies.isEmpty()) {
             return 0;
         }
@@ -168,6 +199,16 @@ public class DemoProgramme implements ApplicationRunner
             log.info("Demo programme: scheduled {} showtimes", added);
         }
         return added;
+    }
+
+    /**
+     * What gets showtimes: the movies in cinemas, the most popular first, when
+     * the catalog knows which those are; otherwise every movie there is.
+     */
+    private List<Movie> moviesToShow()
+    {
+        List<Movie> inCinemas = movieRepository.findAllByInCinemasTrueOrderByPopularityDescIdAsc();
+        return inCinemas.isEmpty() ? movieRepository.findAll(Sort.by("id")) : inCinemas;
     }
 
     private void createCatalogIfEmpty()
@@ -251,8 +292,10 @@ public class DemoProgramme implements ApplicationRunner
         }
     }
 
-    private static MovieRequest movie(String title, String genre, int durationMinutes, String rating, int releaseYear)
+    private static MovieRequest movie(String title, String genre, int durationMinutes, String rating, int releaseYear,
+                                      String overview, String director, String... starring)
     {
-        return new MovieRequest(title, genre, durationMinutes, new BigDecimal(rating), releaseYear);
+        return new MovieRequest(title, genre, durationMinutes, new BigDecimal(rating), releaseYear,
+                overview, null, null, null, null, director, List.of(starring));
     }
 }

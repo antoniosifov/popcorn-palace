@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/antoniosifov/popcorn-palace/actions/workflows/ci.yml/badge.svg)](https://github.com/antoniosifov/popcorn-palace/actions/workflows/ci.yml)
 
-A cinema's ticketing product: pick a movie, choose seats on a seat map that changes as other people book, pay, and get the tickets by email. A web client, a booking API and a notifications service, with PostgreSQL, Redis and Kafka behind them, started by one command.
+A cinema's ticketing product: see what is in cinemas now, choose seats on a seat map that changes as other people book, pay, and get the tickets by email. A web client, a booking API and a notifications service, with PostgreSQL, Redis and Kafka behind them, started by one command.
 
 ![Two browsers on the same showtime: seats one customer holds and then buys change on the other customer's screen without a reload](docs/screenshots/live-seat-map.gif)
 
@@ -10,14 +10,20 @@ It is built to keep its promises when requests race each other: a seat is sold o
 
 ## What it looks like
 
-| The programme | Choosing seats |
+![The first screen: tonight's film as a full-screen still, its title, the next showing and a button to choose seats](docs/screenshots/home.png)
+
+| The week's programme | A film |
 | --- | --- |
-| ![The programme for one day: movies with their showtimes, halls and prices](docs/screenshots/programme.png) | ![The seat map of a showtime with sold seats, seats being booked by others and two picked seats](docs/screenshots/seat-map.png) |
-| **Paying, here with a declined card** | **The ticket** |
-| ![The held seats with a countdown, the test cards, and a declined payment with its reference](docs/screenshots/checkout.png) | ![A confirmed booking: the seats, the prices, the payment and the option to cancel](docs/screenshots/ticket.png) |
+| ![A day of the programme: each film with its poster, what it is about, and its showtimes with halls and prices](docs/screenshots/programme.png) | ![A film's page: the poster, the description, who made it and who is in it](docs/screenshots/film.png) |
+| **Choosing seats** | **Paying, here with a declined card** |
+| ![The seat map of a showtime with sold seats, seats being booked by others and two picked seats](docs/screenshots/seat-map.png) | ![The held seats with a countdown, the test cards, and a declined payment with its reference](docs/screenshots/checkout.png) |
+
+The ticket, once the payment went through:
+
+![A confirmed booking: the film's poster, the seats, the prices, the payment and the option to cancel](docs/screenshots/ticket.png)
 
 <p align="center">
-  <img src="docs/screenshots/phone.png" width="560" alt="The programme and the seat map on a phone">
+  <img src="docs/screenshots/phone.png" width="560" alt="The first screen and the seat map on a phone">
 </p>
 
 The cinema has a back office too. A hall is designed as blocks of rows and drawn while it is typed:
@@ -41,6 +47,21 @@ The stack starts with a demo programme (three halls, eight movies, a week of sho
 3. Read the ticket email in Mailpit at http://localhost:8025. Nothing reaches real mailboxes.
 
 To manage movies, halls and showtimes, log in as the development administrator (`admin@popcorn.local` / `admin-dev-password`) and open **Admin**.
+
+### Films that are in cinemas now
+
+Out of the box the programme is made of eight built-in movies with drawn title cards. Give the stack a [TMDB](https://www.themoviedb.org) API key and it shows what is in cinemas now instead, with posters, stills, trailers, descriptions and cast, and keeps doing so: the list is read again twice a day, new releases join the programme and films that left cinemas leave it.
+
+```sh
+cp .env.example .env        # then set TMDB_API_KEY=... (free: themoviedb.org, Settings, API)
+docker compose up --build
+```
+
+The key stays on the API server: it is never sent to a browser, logged or traced. `TMDB_REGION` (default `US`) chooses whose cinemas. [How the import works](backend/README.md#films-in-cinemas-now).
+
+Days that already have showtimes keep them, so on a stack that was started without a key the current films appear as the week rolls forward. `docker compose down -v` before starting gives a fresh programme at once (and removes the accounts and bookings made so far).
+
+### Where things are
 
 | What | Where |
 | --- | --- |
@@ -94,6 +115,7 @@ The parts that took thought, and where each is explained and tested.
 | The email must match the database | A transactional outbox: the event is written in the booking's transaction and published afterwards, at least once; the consumer drops duplicates | [Events](backend/README.md#events-the-transactional-outbox) |
 | A seat map that is live on several instances | Changes fan out through Redis pub/sub to server-sent event streams; an expired hold is announced by Redis itself | [Live seat map](backend/README.md#live-seat-map-1) |
 | The browser misses what happened before it subscribed | Subscribe first, then load the map again; one reducer handles events that overtake answers | [Seat map and checkout](frontend/README.md#the-live-seat-map-and-the-checkout) |
+| A catalogue that keeps itself current | An import from TMDB that updates by the source's id, changes nothing when the source is down, takes films that left cinemas off the programme without touching their bookings, and keeps its key out of logs and traces | [Films in cinemas now](backend/README.md#films-in-cinemas-now) |
 | Overlapping showtimes in one hall | An exclusion constraint in PostgreSQL, so the rule holds under concurrency, with a friendly check in front of it | [Overlapping showtimes](backend/README.md#overlapping-showtimes) |
 | Keeping the token away from scripts | The browser talks to the web client only; the token lives in an `HttpOnly` cookie and every call to the API is made by the server | [How it fits together](frontend/README.md#how-it-fits-together) |
 | One request across two services and a queue | A trace that survives the outbox: the row stores the request's trace context and the relay continues it | [Traces](backend/README.md#traces) |
@@ -127,10 +149,10 @@ Every API response carries the trace id in its `X-Trace-Id` header, and the web 
 
 | Suite | Count | What it runs against |
 | --- | --- | --- |
-| API | 215 | The application over HTTP with real PostgreSQL, Redis and Kafka (Testcontainers) |
+| API | 233 | The application over HTTP with real PostgreSQL, Redis and Kafka (Testcontainers) |
 | Notifications service | 8 | Real Kafka and Redis, an in-memory mail server |
-| Web client, unit and component | 88 | The rules of the seat map, the checkout, time zones and errors, without a browser |
-| End to end | 12 | A real browser against the whole stack: a booking has to arrive as an email |
+| Web client, unit and component | 98 | The rules of the seat map, the checkout, time zones, pictures and errors, without a browser |
+| End to end | 13 | A real browser against the whole stack: a booking has to arrive as an email |
 
 All of it runs in CI on every pull request. The end-to-end job starts the stack with `docker compose`, the same way the section above does.
 
@@ -174,7 +196,7 @@ The API finds the database through `DB_URL`, `DB_USERNAME` and `DB_PASSWORD`, wh
 - **Payments are a sandbox.** A token stands in for a card. A real provider would replace one class; the idempotency, refund and reconciliation logic around it is real.
 - **One cinema.** There is one programme and one time zone, not a chain.
 - **No refresh tokens.** A session lasts as long as its access token, one hour.
-- **No artwork.** The API stores no posters, so the client draws a title card for each movie.
+- **The pictures are not its own.** Film information, posters and stills come from TMDB and are served by TMDB's picture servers; the API stores their addresses, not the files. This product uses the TMDB API but is not endorsed or certified by TMDB.
 - **Not deployed yet.** It runs locally with one command; a public demo is the next step.
 
 ## Repository

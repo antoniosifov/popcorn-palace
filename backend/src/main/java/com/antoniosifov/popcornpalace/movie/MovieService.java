@@ -42,7 +42,7 @@ public class MovieService
             throw titleTaken(request.title());
         }
         Movie movie = new Movie(request.title(), request.genre(), request.durationMinutes(),
-                request.rating(), request.releaseYear());
+                request.rating(), request.releaseYear(), request.presentation());
         // Flush now so a concurrent duplicate fails here, on the uq_movies_title
         // constraint, and is reported as a conflict rather than at commit time.
         return MovieResponse.from(movieRepository.saveAndFlush(movie));
@@ -56,7 +56,7 @@ public class MovieService
             throw titleTaken(request.title());
         }
         movie.update(request.title(), request.genre(), request.durationMinutes(),
-                request.rating(), request.releaseYear());
+                request.rating(), request.releaseYear(), request.presentation());
         return MovieResponse.from(movieRepository.saveAndFlush(movie));
     }
 

@@ -1,49 +1,54 @@
 @import "tailwindcss";
 
 /*
- * One dark theme, like the room the product is about: a true black ground,
- * surfaces told apart by lightness alone (no borders or shadows on cards),
- * and one hue, the amber of a marquee bulb, kept for the data that answers
- * the screen's question: the customer's own seats. Controls stay neutral; the
- * primary action is a white pill.
+ * A picture palace after the lights go down. The ground is a soft black, with
+ * surfaces one step lighter, so that the film stills and posters supply all
+ * the colour. The one hue of the interface is brass, the metal of the place:
+ * it marks the action to take and the customer's own seats, nothing else.
+ *
+ * Two typefaces. Sentient, a soft light serif, sets what is announced: film
+ * titles and the headings of a page. Inter sets everything that is read or
+ * operated: descriptions, times, the seat map, forms.
  */
 @theme {
-  --color-ground: #000000;
-  --color-surface: #111111;
-  --color-well: #1a1a1a;
-  --color-raised: #2a2a2a;
-  --color-hover: #383838;
-  --color-rule: #1f1f1f;
-  --color-control: #4a4a4a;
-  --color-ink: #ffffff;
-  --color-muted: #b4b4b4;
-  --color-faint: #949494;
+  --color-ground: #111111;
+  --color-surface: #1c1c1c;
+  --color-well: #242424;
+  --color-raised: #303030;
+  --color-hover: #3e3e3e;
+  --color-rule: #2a2a2a;
+  --color-control: #565656;
+  --color-ink: #f2f2f2;
+  --color-muted: #b0b0b0;
+  --color-faint: #8f8f8f;
 
-  --color-accent: #f2b33d;
-  --color-accent-ink: #1c1400;
-  --color-accent-tint: #2b2414;
+  --color-accent: #c9a468;
+  --color-accent-strong: #dcbb84;
+  --color-accent-ink: #15110a;
+  --color-accent-tint: #2b2418;
 
-  --color-positive: #3fc07a;
-  --color-positive-tint: #172a1d;
-  --color-negative: #e5566f;
-  --color-negative-tint: #2c1a20;
-  --color-warning: #e5a93b;
-  --color-warning-tint: #2b2414;
+  --color-positive: #5cc48a;
+  --color-positive-tint: #1b2b22;
+  --color-negative: #ea6f83;
+  --color-negative-tint: #2f1d22;
+  --color-warning: #dcb264;
+  --color-warning-tint: #2c2619;
 
   --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Sentient", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
 
-  --text-small: 12px;
-  --text-small--line-height: 16px;
-  --text-label: 13px;
-  --text-label--line-height: 18px;
-  --text-body: 14px;
-  --text-body--line-height: 20px;
-  --text-section: 16px;
-  --text-section--line-height: 24px;
-  --text-title: 20px;
-  --text-title--line-height: 28px;
-  --text-figure: 24px;
-  --text-figure--line-height: 28px;
+  --text-small: 13px;
+  --text-small--line-height: 18px;
+  --text-label: 14px;
+  --text-label--line-height: 20px;
+  --text-body: 16px;
+  --text-body--line-height: 24px;
+  --text-section: 18px;
+  --text-section--line-height: 26px;
+  --text-title: 24px;
+  --text-title--line-height: 30px;
+  --text-figure: 26px;
+  --text-figure--line-height: 30px;
 
   --radius-card: 20px;
   --radius-inner: 14px;
@@ -116,7 +121,7 @@
     padding-inline: 16px;
     border-radius: 999px;
     border: 1px solid transparent;
-    font-size: var(--text-body);
+    font-size: var(--text-label);
     line-height: 20px;
     font-weight: 500;
     white-space: nowrap;
@@ -137,13 +142,14 @@
     border-color: transparent;
     color: var(--color-faint);
   }
-  /* Primary by inversion: the one white pill on the screen. */
+  /* The one brass button on a screen: the thing to do next. */
   .btn-primary {
-    background: var(--color-ink);
-    color: #000000;
+    background: var(--color-accent);
+    color: var(--color-accent-ink);
+    font-weight: 600;
   }
   .btn-primary:hover:not(:disabled) {
-    background: #dddddd;
+    background: var(--color-accent-strong);
   }
   .btn-secondary {
     border-color: var(--color-control);
@@ -161,8 +167,9 @@
     background: var(--color-negative-tint);
   }
   .btn-large {
-    height: 44px;
-    padding-inline: 20px;
+    height: 48px;
+    padding-inline: 24px;
+    font-size: var(--text-body);
   }
 
   /* A text action: ink, underlined on hover, no box. */
@@ -193,7 +200,7 @@
     border: 1px solid var(--color-control);
     background: var(--color-ground);
     color: var(--color-ink);
-    font-size: var(--text-body);
+    font-size: var(--text-label);
     transition: border-color 150ms ease;
   }
   .input::placeholder {
@@ -248,6 +255,7 @@
     white-space: nowrap;
   }
   .table td {
+    font-size: var(--text-label);
     padding: 14px 12px;
     border-top: 1px solid var(--color-rule);
     vertical-align: baseline;
@@ -290,7 +298,7 @@
   }
   /* VIP: the same seat with a headrest. */
   .seat-vip {
-    border-top: 3px solid #8c8c8c;
+    border-top: 3px solid #9a9a9a;
   }
   /* Somebody else is checking out: an outline, no fill. */
   .seat-held {
@@ -300,8 +308,8 @@
     border-top-color: transparent;
   }
   .seat-booked {
-    background: #191919;
-    border-top-color: #191919;
+    background: #222222;
+    border-top-color: #222222;
   }
   /* The customer's own seats carry the one hue of the product. */
   .seat-mine,
@@ -319,7 +327,214 @@
 
 @media (min-width: 768px) {
   .column {
-    padding-inline: 16px;
+    padding-inline: 24px;
+  }
+}
+
+/* ------------------------------------------------------------------ pages */
+@layer components {
+  /* What is announced: a film title, the heading of a page. */
+  .display {
+    font-family: var(--font-display);
+    font-weight: 300;
+    letter-spacing: -0.015em;
+    line-height: 1;
+    text-wrap: balance;
+  }
+
+  /* Display sizes by the length of what they set, so a title never runs past two lines. */
+  .display-short {
+    font-size: clamp(3rem, 12vw, 11rem);
+  }
+  .display-medium {
+    font-size: clamp(2.25rem, 9vw, 8.5rem);
+  }
+  .display-long {
+    font-size: clamp(1.875rem, 6.4vw, 6rem);
+  }
+  .display-head {
+    font-size: clamp(2rem, 1.3rem + 3.2vw, 4rem);
+    line-height: 1.04;
+  }
+  .display-row {
+    font-size: clamp(1.625rem, 1.3rem + 1vw, 2rem);
+    line-height: 1.08;
+  }
+
+  /* A screen that begins under the bar rather than under a still. */
+  .page-top {
+    padding-top: 104px;
+  }
+
+  /* The first screen: a still, edge to edge, with what is said about it along the bottom. */
+  .hero {
+    position: relative;
+    display: flex;
+    min-height: 100svh;
+    flex-direction: column;
+    justify-content: flex-end;
+    overflow: hidden;
+    background: var(--color-ground);
+  }
+  .hero-short {
+    min-height: min(78svh, 760px);
+  }
+  /* Without a still there is nothing to look at above the words, so the screen is only as tall as they need. */
+  .hero-plain {
+    min-height: 0;
+  }
+  .hero-picture {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 20%;
+  }
+  /*
+   * Text on a photograph needs something under it. A neutral scrim, under the
+   * text only: the upper part of the still is left as it was shot.
+   */
+  .hero-scrim {
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(to bottom, rgb(17 17 17 / 0.72) 0, rgb(17 17 17 / 0) 22%),
+      linear-gradient(to top, rgb(17 17 17 / 1) 0, rgb(17 17 17 / 0.86) 26%, rgb(17 17 17 / 0) 68%);
+  }
+
+  /* A poster or a drawn title card: the same frame either way. */
+  .poster {
+    position: relative;
+    display: block;
+    aspect-ratio: 2 / 3;
+    overflow: hidden;
+    border-radius: 6px;
+    background: var(--color-surface);
+  }
+  .poster img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 500ms var(--ease-out);
+  }
+  a:hover > .poster img,
+  a:focus-visible > .poster img {
+    transform: scale(1.04);
+  }
+
+  /* A printed sheet: prices and halls are set like the card at a box office window. */
+  .sheet {
+    background: #e8e6e1;
+    color: #191817;
+    mask:
+      radial-gradient(circle at 12px 0, transparent 9px, #000 9.5px) top left / 24px 51% repeat-x,
+      radial-gradient(circle at 12px 100%, transparent 9px, #000 9.5px) bottom left / 24px 51% repeat-x;
+  }
+  .sheet .sheet-soft {
+    color: #57544e;
+  }
+
+  /* Sentences meant to be read, not scanned: what a film is about, what tonight holds. */
+  .copy {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: 0;
+  }
+
+  /* The trailer, played over the page it was asked for on. */
+  .trailer {
+    width: min(1120px, calc(100vw - 32px), calc((100svh - 128px) * 16 / 9));
+    max-width: none;
+    max-height: none;
+    margin: auto;
+    padding: 0;
+    border: 0;
+    overflow: visible;
+    background: transparent;
+    color: var(--color-ink);
+  }
+  .trailer[open] {
+    display: grid;
+  }
+  .trailer::backdrop {
+    background: rgb(0 0 0 / 0.88);
+  }
+  .trailer-frame {
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: 8px;
+    background: #000;
+  }
+  .trailer-frame iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+  html:has(dialog[open]) {
+    overflow: hidden;
+  }
+}
+
+/* -------------------------------------------------------------------- motion */
+@media (prefers-reduced-motion: no-preference) {
+  /* The one loud moment: the still of the first screen opens like a shutter and settles. */
+  .shutter {
+    animation: shutter 1100ms var(--ease-out) both;
+  }
+  .shutter > img {
+    animation:
+      settle 1600ms var(--ease-out) both,
+      drift 38s ease-in-out 1600ms infinite alternate;
+  }
+  @keyframes shutter {
+    from {
+      clip-path: inset(0 0 100% 0);
+    }
+    to {
+      clip-path: inset(0 0 0 0);
+    }
+  }
+  @keyframes settle {
+    from {
+      transform: scale(1.12);
+    }
+    to {
+      transform: scale(1);
+    }
+  }
+  /* A still that is never quite still: a slow push in, and back. */
+  @keyframes drift {
+    from {
+      transform: scale(1);
+    }
+    to {
+      transform: scale(1.06);
+    }
+  }
+
+  /* What is said on the first screen arrives after the picture, one part after another. */
+  .arrive {
+    animation: rise 700ms var(--ease-out) both;
+    animation-delay: calc(500ms + var(--order, 0) * 90ms);
+  }
+
+  /*
+   * The parts of a section marked `rise` come up into place the first time
+   * they are scrolled to, once. That is done by components/reveals.tsx, with
+   * an animation held on its first frame; there is no rule here that hides
+   * anything, so without the script the parts are simply on the page.
+   */
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
 }
 

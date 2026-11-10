@@ -1,14 +1,16 @@
+import { atWidth, safePicture, srcSet } from "@/lib/artwork";
+
 /**
- * The API holds no artwork, so every movie gets a title card drawn from its
- * own name: a monogram of its first two letters, cropped by the frame, on one of three greys. The same
- * title always gets the same card. Lightness only: the one hue of the product
- * is kept for the customer's seats.
+ * A movie's poster. When the catalog has no artwork for a movie (the built-in
+ * catalog has none, and a movie added by hand may have none) a title card is
+ * drawn from its name instead: a monogram of its first two letters on one of
+ * three greys, the same for the same title every time.
  */
 
 const TONES = [
-  { ground: "#1c1c1c", letter: "#3a3a3a" },
-  { ground: "#242424", letter: "#454545" },
-  { ground: "#2c2c2c", letter: "#505050" },
+  { ground: "#232323", letter: "#474747" },
+  { ground: "#2a2a2a", letter: "#505050" },
+  { ground: "#313131", letter: "#5a5a5a" },
 ];
 
 function hash(text: string): number {
@@ -31,30 +33,53 @@ export function monogram(title: string): string {
   return first.toUpperCase() + second.toLowerCase();
 }
 
-type Size = "row" | "header" | "large";
-
-const SIZES: Record<Size, { box: string; letters: string }> = {
-  row: { box: "h-[75px] w-[50px] rounded-[6px]", letters: "text-[34px]" },
-  header: { box: "h-[62px] w-[50px] rounded-[6px]", letters: "text-[32px]" },
-  large: { box: "h-[180px] w-[120px] rounded-[10px]", letters: "text-[84px]" },
+type Props = {
+  title: string;
+  /** The https address of the poster, when there is one. */
+  url?: string | null;
+  /** How wide the poster is shown, as the `sizes` of a picture: "168px", "(min-width: 768px) 220px, 40vw". */
+  sizes: string;
+  /** Sets the width; the frame keeps the 2:3 of a poster. */
+  className?: string;
+  /** The first poster of a page is fetched at once; the rest when they come near the screen. */
+  eager?: boolean;
 };
 
-export function Poster({ title, size = "row" }: { title: string; size?: Size }) {
+export function Poster({ title, url, sizes, className = "", eager = false }: Props) {
+  const picture = safePicture(url);
+  if (picture) {
+    return (
+      <span className={`poster ${className}`}>
+        {/* Sized and served by TMDB's picture servers; passing it through this server would only re-encode it. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={atWidth(picture, 342)}
+          srcSet={srcSet(picture, "poster")}
+          sizes={sizes}
+          alt={`Poster of ${title}`}
+          width={342}
+          height={513}
+          loading={eager ? "eager" : "lazy"}
+          decoding="async"
+        />
+      </span>
+    );
+  }
+
   const tone = TONES[hash(title) % TONES.length];
-  const { box, letters } = SIZES[size];
   return (
-    <div
+    <span
       aria-hidden="true"
-      className={`relative flex flex-none items-end justify-center overflow-hidden ${box}`}
+      className={`poster flex items-end justify-center [container-type:inline-size] ${className}`}
       style={{ background: tone.ground }}
     >
       {/* Set to the width of the frame and sunk a little below it, so the frame crops the foot of the letters. */}
       <span
-        className={`mb-[-0.12em] font-semibold leading-none tracking-[-0.05em] ${letters}`}
+        className="mb-[-0.12em] font-[family-name:var(--font-display)] text-[70cqw] font-normal leading-none tracking-[-0.04em]"
         style={{ color: tone.letter }}
       >
         {monogram(title)}
       </span>
-    </div>
+    </span>
   );
 }
