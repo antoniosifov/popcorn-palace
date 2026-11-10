@@ -2,7 +2,7 @@
 
 A movie ticket booking backend built with Java 21 and Spring Boot 4. It manages a movie catalog, halls with real seat layouts and showtimes with per-category prices, and lets registered users hold seats while they check out, pay for them and cancel later. Its rules stay intact when requests race each other.
 
-[Notifications service](../notifications/README.md) · [Frontend](../frontend/README.md) · [Portfolio](https://antoniosifov.com) · [LinkedIn](https://www.linkedin.com/in/anton-iosifov/)
+[Web client](../frontend/README.md) · [Notifications service](../notifications/README.md) · [Portfolio](https://antoniosifov.com) · [LinkedIn](https://www.linkedin.com/in/anton-iosifov/)
 
 ## Highlights
 
@@ -20,7 +20,7 @@ A movie ticket booking backend built with Java 21 and Spring Boot 4. It manages 
 - Business rules enforced by database constraints, so they hold under concurrency
 - Uniform error responses in the RFC 9457 "problem details" format with machine-readable codes
 - Observability built in: health probes, Prometheus metrics for the business (holds, bookings, payments, outbox backlog, open seat maps) as well as the runtime, and one OpenTelemetry trace from the booking request through the outbox and Kafka to the ticket email, with the trace id in every response
-- 201 automated tests, most of them calling the API over HTTP against real PostgreSQL, Redis and Kafka
+- 215 automated tests, most of them calling the API over HTTP against real PostgreSQL, Redis and Kafka
 
 ## Architecture
 
@@ -96,7 +96,7 @@ Base URL: `http://localhost:8080/api/v1`. Interactive documentation: http://loca
 | `GET` | `/halls/{id}` | Get a hall with its row-by-row layout | anyone | `200` |
 | `POST` | `/halls` | Create a hall and its seats | admin | `201` + `Location` |
 | `DELETE` | `/halls/{id}` | Delete a hall and its seats | admin | `204` |
-| `GET` | `/showtimes` | List showtimes (paginated, optional `movieId` filter) | anyone | `200` |
+| `GET` | `/showtimes` | List showtimes (paginated; optional `movieId`, `from` and `to` filters) | anyone | `200` |
 | `GET` | `/showtimes/{id}` | Get a showtime | anyone | `200` |
 | `POST` | `/showtimes` | Schedule a showtime | admin | `201` + `Location` |
 | `PUT` | `/showtimes/{id}` | Replace a showtime | admin | `200` |
@@ -151,7 +151,7 @@ Design decisions:
 - **Someone else's booking is a `404`, not a `403`.** A `403` would confirm that the id exists.
 - **Passwords are stored only as BCrypt hashes** and are kept out of logs (`toString` of the request objects masks them).
 
-- **Login and registration are throttled.** Ten attempts per client address per minute across both endpoints, counted in Redis so all instances share the count; after that the API answers `429 TOO_MANY_REQUESTS` with a `Retry-After` header. If Redis is down the limiter lets requests through rather than locking everyone out.
+- **Login and registration are throttled.** Ten attempts per client address per minute across both endpoints, counted in Redis so all instances share the count; after that the API answers `429 TOO_MANY_REQUESTS` with a `Retry-After` header. If Redis is down the limiter lets requests through rather than locking everyone out. Behind the web client or a reverse proxy every request arrives from the same address, so there the limit would count all visitors together: with `FORWARD_HEADERS_STRATEGY=native` the address is taken from the `X-Forwarded-For` header instead, trusted only when the request comes from a private network address (the proxy), and it is the address that proxy saw, not whatever the visitor put in the header.
 
 Not implemented yet: refresh tokens.
 
@@ -315,6 +315,12 @@ List endpoints take `page` (zero-based), `size` (default 20, capped at 100) and 
 
 ```text
 GET /api/v1/movies?page=0&size=20&sort=releaseYear,desc
+```
+
+Showtimes can also be asked for by when they start: `from` (included) and `to` (not included) are ISO-8601 instants, and either may be left out. This is how a client lists what is still to come, or one day of the programme:
+
+```text
+GET /api/v1/showtimes?from=2030-01-15T00:00:00Z&to=2030-01-16T00:00:00Z&sort=startTime,asc
 ```
 
 ```json
@@ -679,9 +685,11 @@ From the repository root:
 docker compose up --build
 ```
 
-The API listens on http://localhost:8080 and Flyway creates the schema on first start. Compose also creates a development administrator, `admin@popcorn.local` with the password `admin-dev-password`; change both in `.env` (see `.env.example`) for anything that is not your own machine.
+The web client is at http://localhost:3000, the API at http://localhost:8080; Flyway creates the schema on first start. Compose also creates a development administrator, `admin@popcorn.local` with the password `admin-dev-password`; change both in `.env` (see `.env.example`) for anything that is not your own machine.
 
-The stack watches itself: Grafana at http://localhost:3000 (the dashboard opens as the home page, no login needed to view), Jaeger at http://localhost:16686 (search the `popcorn-palace` service and open the trace of a confirmed hold: the Kafka send and the notifications service's email hang under it), Prometheus at http://localhost:9090.
+In compose the API also keeps a **demo programme** (`DEMO_DATA=true`), so an empty installation has something to show: three halls and eight movies when the catalog is empty, and showtimes for today and the six days after it, at 11:00, 14:15, 17:30 and 20:45 on the cinema's clock (`CINEMA_TIME_ZONE`). It runs at startup and once an hour, and only ever adds: a catalog somebody manages is not touched, and a hall gets a day of showtimes only if nothing starts in it that day. Everything is created through the same services the API uses, so the demo data obeys every rule real data does.
+
+The stack watches itself: Grafana at http://localhost:3001 (the dashboard opens as the home page, no login needed to view), Jaeger at http://localhost:16686 (search the `popcorn-palace` service and open the trace of a confirmed hold: the Kafka send and the notifications service's email hang under it), Prometheus at http://localhost:9090.
 
 ### API from your IDE
 
@@ -718,6 +726,9 @@ Windows:
 | `SEATMAP_HEARTBEAT_INTERVAL` | How often open streams get a keep-alive comment | `PT15S` |
 | `PAYMENT_CURRENCY` | ISO 4217 code of the currency all prices are in | `USD` |
 | `AUTH_RATE_LIMIT` | Login and registration attempts per client address per minute | `10` |
+| `FORWARD_HEADERS_STRATEGY` | `native` behind the web client or a reverse proxy: the client address comes from `X-Forwarded-For` | `none` |
+| `DEMO_DATA` | `true` keeps a demo programme: halls, movies and a week of showtimes | `false` (`true` in compose) |
+| `CINEMA_TIME_ZONE` | The IANA time zone the demo programme is scheduled in | `UTC` |
 | `JWT_SECRET` | Key that signs access tokens, at least 32 characters | empty: a random key per start, so tokens stop working after a restart |
 | `JWT_TTL` | Lifetime of an access token (ISO-8601 duration) | `PT1H` |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Administrator created at startup if missing | none outside compose |
@@ -744,4 +755,4 @@ Windows:
 
 Docker must be running: the API tests start disposable PostgreSQL, Redis and Kafka containers through Testcontainers and call the application over HTTP, so they exercise JSON mapping, validation, security, transactions, migrations, constraints, the Redis scripts, the outbox, the live seat map and the management endpoints together. Rules that need no database (text normalization, request validation, sort allow-list) have plain unit tests.
 
-Current suite: **201 tests passing**. The notifications service has its own suite, see its [README](../notifications/README.md).
+Current suite: **215 tests passing**. The notifications service has its own suite, see its [README](../notifications/README.md).

@@ -1,9 +1,9 @@
-# Full local stack: `docker compose up --build`
+# Full local stack: `docker compose up --build`, then open http://localhost:3000
 # Infrastructure only (run the services from your IDE): `docker compose up db redis kafka mailpit jaeger`
 # Host ports can be changed in .env (see .env.example).
 #
 # After booking a seat, open http://localhost:8025 to read the ticket email.
-# Watch the stack: Grafana http://localhost:3000, Jaeger (traces) http://localhost:16686,
+# Watch the stack: Grafana http://localhost:3001, Jaeger (traces) http://localhost:16686,
 # Prometheus http://localhost:9090.
 services:
   db:
@@ -94,6 +94,14 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
       LOG_FORMAT: ${LOG_FORMAT:-}
+      # Customers reach the API through the web client, so the address that login
+      # attempts are counted by comes from the X-Forwarded-For header it sends.
+      FORWARD_HEADERS_STRATEGY: native
+      AUTH_RATE_LIMIT: ${AUTH_RATE_LIMIT:-10}
+      # Keeps a programme in an empty installation: halls, movies, a week of showtimes.
+      DEMO_DATA: ${DEMO_DATA:-true}
+      CINEMA_TIME_ZONE: ${CINEMA_TIME_ZONE:-UTC}
+      PAYMENT_CURRENCY: ${PAYMENT_CURRENCY:-USD}
       # Development defaults; override them in .env (see .env.example).
       JWT_SECRET: ${JWT_SECRET:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@popcorn.local}
@@ -107,6 +115,30 @@ services:
       timeout: 3s
       retries: 10
       start_period: 40s
+
+  # The web client: what a customer opens. http://localhost:3000
+  # It is the only thing a browser talks to; it calls the API from its server side.
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_URL: http://api:8080
+      CINEMA_TIME_ZONE: ${CINEMA_TIME_ZONE:-UTC}
+      CURRENCY: ${PAYMENT_CURRENCY:-USD}
+      # This stack is served over plain HTTP. Behind HTTPS, remove this line and
+      # the session cookie is sent over HTTPS only.
+      SESSION_COOKIE_SECURE: "false"
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
 
   # Reads booking events from Kafka and emails tickets.
   notifications:
@@ -152,7 +184,7 @@ services:
       - "${PROMETHEUS_PORT:-9090}:9090"
 
   # The dashboard over those metrics, with Jaeger as a second data source.
-  # http://localhost:3000; viewing needs no login, editing needs admin / GRAFANA_PASSWORD.
+  # http://localhost:3001; viewing needs no login, editing needs admin / GRAFANA_PASSWORD.
   grafana:
     image: grafana/grafana:13.3.0
     restart: unless-stopped
@@ -169,7 +201,7 @@ services:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
-      - "${GRAFANA_PORT:-3000}:3000"
+      - "${GRAFANA_PORT:-3001}:3000"
 
 volumes:
   db-data:

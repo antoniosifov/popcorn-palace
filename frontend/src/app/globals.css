@@ -1,0 +1,333 @@
+@import "tailwindcss";
+
+/*
+ * One dark theme, like the room the product is about: a true black ground,
+ * surfaces told apart by lightness alone (no borders or shadows on cards),
+ * and one hue, the amber of a marquee bulb, kept for the data that answers
+ * the screen's question: the customer's own seats. Controls stay neutral; the
+ * primary action is a white pill.
+ */
+@theme {
+  --color-ground: #000000;
+  --color-surface: #111111;
+  --color-well: #1a1a1a;
+  --color-raised: #2a2a2a;
+  --color-hover: #383838;
+  --color-rule: #1f1f1f;
+  --color-control: #4a4a4a;
+  --color-ink: #ffffff;
+  --color-muted: #b4b4b4;
+  --color-faint: #949494;
+
+  --color-accent: #f2b33d;
+  --color-accent-ink: #1c1400;
+  --color-accent-tint: #2b2414;
+
+  --color-positive: #3fc07a;
+  --color-positive-tint: #172a1d;
+  --color-negative: #e5566f;
+  --color-negative-tint: #2c1a20;
+  --color-warning: #e5a93b;
+  --color-warning-tint: #2b2414;
+
+  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --text-small: 12px;
+  --text-small--line-height: 16px;
+  --text-label: 13px;
+  --text-label--line-height: 18px;
+  --text-body: 14px;
+  --text-body--line-height: 20px;
+  --text-section: 16px;
+  --text-section--line-height: 24px;
+  --text-title: 20px;
+  --text-title--line-height: 28px;
+  --text-figure: 24px;
+  --text-figure--line-height: 28px;
+
+  --radius-card: 20px;
+  --radius-inner: 14px;
+  --radius-seat: 5px;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  html {
+    background: var(--color-ground);
+    color-scheme: dark;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--color-ground);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--color-accent);
+    color: var(--color-accent-ink);
+  }
+
+  /* Dates and numbers in native pickers follow the dark theme. */
+  input,
+  select,
+  textarea {
+    color-scheme: dark;
+  }
+}
+
+@layer components {
+  /* The page column: 1152px, centred, with one pair of margins at every width. */
+  .column {
+    width: 100%;
+    max-width: 1184px;
+    margin-inline: auto;
+    padding-inline: 16px;
+  }
+
+  .card {
+    background: var(--color-surface);
+    border-radius: var(--radius-card);
+    padding: 22px;
+    min-width: 0;
+  }
+
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ------------------------------------------------------------ controls */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 36px;
+    padding-inline: 16px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    font-size: var(--text-body);
+    line-height: 20px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      background-color 150ms ease,
+      border-color 150ms ease,
+      color 150ms ease,
+      transform 120ms var(--ease-out);
+  }
+  .btn:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+  .btn:disabled,
+  .btn[aria-disabled="true"] {
+    cursor: not-allowed;
+    background: var(--color-well);
+    border-color: transparent;
+    color: var(--color-faint);
+  }
+  /* Primary by inversion: the one white pill on the screen. */
+  .btn-primary {
+    background: var(--color-ink);
+    color: #000000;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: #dddddd;
+  }
+  .btn-secondary {
+    border-color: var(--color-control);
+    color: var(--color-ink);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background: var(--color-well);
+    border-color: var(--color-faint);
+  }
+  .btn-danger {
+    border-color: var(--color-negative);
+    color: var(--color-negative);
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: var(--color-negative-tint);
+  }
+  .btn-large {
+    height: 44px;
+    padding-inline: 20px;
+  }
+
+  /* A text action: ink, underlined on hover, no box. */
+  .link {
+    color: var(--color-ink);
+    font-weight: 500;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  .link:hover {
+    text-decoration: underline;
+  }
+  .link-quiet {
+    color: var(--color-muted);
+    text-underline-offset: 3px;
+    cursor: pointer;
+    transition: color 150ms ease;
+  }
+  .link-quiet:hover {
+    color: var(--color-ink);
+  }
+
+  .input {
+    width: 100%;
+    height: 40px;
+    padding-inline: 14px;
+    border-radius: var(--radius-inner);
+    border: 1px solid var(--color-control);
+    background: var(--color-ground);
+    color: var(--color-ink);
+    font-size: var(--text-body);
+    transition: border-color 150ms ease;
+  }
+  .input::placeholder {
+    color: var(--color-faint);
+  }
+  .input:hover {
+    border-color: var(--color-faint);
+  }
+  .input[aria-invalid="true"] {
+    border-color: var(--color-negative);
+  }
+
+  /* --------------------------------------------------------------- pills */
+  .pill {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    height: 22px;
+    padding-inline: 9px;
+    border-radius: 999px;
+    background: var(--color-raised);
+    color: var(--color-ink);
+    font-size: var(--text-small);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .pill-positive {
+    background: var(--color-positive-tint);
+    color: var(--color-positive);
+  }
+  .pill-negative {
+    background: var(--color-negative-tint);
+    color: var(--color-negative);
+  }
+  .pill-warning {
+    background: var(--color-warning-tint);
+    color: var(--color-warning);
+  }
+
+  /* -------------------------------------------------------------- tables */
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .table th {
+    height: 36px;
+    padding: 0 12px;
+    text-align: left;
+    font-size: var(--text-small);
+    font-weight: 400;
+    color: var(--color-muted);
+    white-space: nowrap;
+  }
+  .table td {
+    padding: 14px 12px;
+    border-top: 1px solid var(--color-rule);
+    vertical-align: baseline;
+  }
+  .table th:first-child,
+  .table td:first-child {
+    padding-left: 0;
+  }
+  .table th:last-child,
+  .table td:last-child {
+    padding-right: 0;
+  }
+  .table .n {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* --------------------------------------------------------------- seats */
+  .seat {
+    display: block;
+    width: 100%;
+    aspect-ratio: 10 / 9;
+    border-radius: var(--radius-seat) var(--radius-seat) 3px 3px;
+    background: var(--color-raised);
+    transition:
+      background-color 300ms ease,
+      transform 120ms var(--ease-out);
+  }
+  button.seat {
+    cursor: pointer;
+  }
+  button.seat:hover:not(:disabled) {
+    background: var(--color-hover);
+  }
+  button.seat:active:not(:disabled) {
+    transform: scale(0.92);
+  }
+  button.seat:disabled {
+    cursor: not-allowed;
+  }
+  /* VIP: the same seat with a headrest. */
+  .seat-vip {
+    border-top: 3px solid #8c8c8c;
+  }
+  /* Somebody else is checking out: an outline, no fill. */
+  .seat-held {
+    background: transparent;
+    outline: 1px solid var(--color-control);
+    outline-offset: -1px;
+    border-top-color: transparent;
+  }
+  .seat-booked {
+    background: #191919;
+    border-top-color: #191919;
+  }
+  /* The customer's own seats carry the one hue of the product. */
+  .seat-mine,
+  button.seat-mine:hover:not(:disabled) {
+    background: var(--color-accent);
+    border-top-color: var(--color-accent);
+  }
+
+  /* A value that is still loading: a flat bar at the size of what will replace it. */
+  .skeleton {
+    background: var(--color-well);
+    border-radius: 6px;
+  }
+}
+
+@media (min-width: 768px) {
+  .column {
+    padding-inline: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation: none !important;
+  }
+}

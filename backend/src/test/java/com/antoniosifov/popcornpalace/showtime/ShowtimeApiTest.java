@@ -258,6 +258,60 @@ class ShowtimeApiTest extends ApiIntegrationTest
                 .andExpect(jsonPath("$.content[1].movieId").value(movieId));
     }
 
+    @DisplayName("from and to select the showtimes that start inside a window: from is included, to is not")
+    @Test
+    void listsShowtimesStartingInsideAWindow() throws Exception
+    {
+        createShowtime(movieId, hallId, "2030-01-14T21:00:00Z", "2030-01-14T23:00:00Z");
+        long first = createShowtime(movieId, hallId, "2030-01-15T00:00:00Z", "2030-01-15T02:00:00Z");
+        long second = createShowtime(movieId, hallId, START, END);
+        createShowtime(movieId, hallId, "2030-01-16T00:00:00Z", "2030-01-16T02:00:00Z");
+
+        mvc.perform(get(SHOWTIMES).param("from", "2030-01-15T00:00:00Z").param("to", "2030-01-16T00:00:00Z"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.content[0].id").value(first))
+                .andExpect(jsonPath("$.content[1].id").value(second));
+    }
+
+    @DisplayName("Either bound may be left out, and the window combines with the movie filter")
+    @Test
+    void listsShowtimesWithAnOpenWindow() throws Exception
+    {
+        long otherMovieId = createMovie("Arrival");
+        createShowtime(movieId, hallId, "2030-01-14T18:00:00Z", "2030-01-14T20:00:00Z");
+        long later = createShowtime(movieId, hallId, START, END);
+        createShowtime(otherMovieId, hallId, "2030-01-16T18:00:00Z", "2030-01-16T20:00:00Z");
+
+        // What is still to come, as a client asks for it: everything from a moment on.
+        mvc.perform(get(SHOWTIMES).param("from", "2030-01-15T00:00:00Z"))
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.content[0].id").value(later));
+
+        mvc.perform(get(SHOWTIMES).param("to", "2030-01-15T00:00:00Z"))
+                .andExpect(jsonPath("$.totalElements").value(1));
+
+        mvc.perform(get(SHOWTIMES).param("from", "2030-01-15T00:00:00Z").param("movieId", String.valueOf(movieId)))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(later));
+    }
+
+    @DisplayName("A time with a UTC offset is the same instant, and a value that is not a time is a 400")
+    @Test
+    void windowAcceptsOffsetsAndRejectsNonsense() throws Exception
+    {
+        createShowtime(movieId, hallId, START, END);
+
+        // 20:00 at +02:00 is 18:00 UTC, the moment the showtime starts.
+        mvc.perform(get(SHOWTIMES).param("from", "2030-01-15T20:00:00+02:00"))
+                .andExpect(jsonPath("$.totalElements").value(1));
+        mvc.perform(get(SHOWTIMES).param("from", "2030-01-15T20:00:01+02:00"))
+                .andExpect(jsonPath("$.totalElements").value(0));
+
+        mvc.perform(get(SHOWTIMES).param("from", "tomorrow"))
+                .andExpect(problem(400, "BAD_REQUEST"));
+    }
+
     @DisplayName("DELETE removes a showtime and its prices")
     @Test
     void deletesShowtime() throws Exception
