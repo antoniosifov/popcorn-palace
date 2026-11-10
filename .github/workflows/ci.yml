@@ -116,6 +116,10 @@ jobs:
       - name: Validate Grafana dashboard
         run: python3 -m json.tool observability/grafana/dashboards/popcorn-palace.json > /dev/null
 
+      # The READMEs link to each other's sections and to pictures; a renamed heading must not break them.
+      - name: Check links in the documentation
+        run: python3 .github/scripts/check-doc-links.py
+
   # A real browser against the whole stack, as docker compose runs it: web
   # client, API, PostgreSQL, Redis, Kafka, the notifications service and the
   # mail catcher. A booking made in the browser has to end as an email.
