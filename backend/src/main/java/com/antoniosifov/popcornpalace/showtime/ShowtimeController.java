@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
+import java.time.Instant;
 
 @RestController
 @RequestMapping("/api/v1/showtimes")
@@ -39,12 +40,17 @@ public class ShowtimeController
     }
 
     @GetMapping
-    @Operation(summary = "List showtimes", description = "Paginated. Sortable by id, startTime, endTime.")
+    @Operation(summary = "List showtimes", description = """
+            Paginated. Sortable by id, startTime, endTime. `from` and `to` select the showtimes that start             inside a window, so a client can ask for what is still to come (`from` = now) or for one day.""")
     public PageResponse<ShowtimeResponse> list(
             @Parameter(description = "Only showtimes of this movie") @RequestParam(required = false) Long movieId,
+            @Parameter(description = "Only showtimes that start at or after this instant", example = "2030-01-15T00:00:00Z")
+            @RequestParam(required = false) Instant from,
+            @Parameter(description = "Only showtimes that start before this instant", example = "2030-01-16T00:00:00Z")
+            @RequestParam(required = false) Instant to,
             @ParameterObject @PageableDefault(size = 20, sort = "startTime") Pageable pageable)
     {
-        return showtimeService.list(movieId, pageable);
+        return showtimeService.list(movieId, from, to, pageable);
     }
 
     @GetMapping("/{id}")

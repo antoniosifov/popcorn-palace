@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.EnumSet;
 import java.util.Map;
 import java.util.Set;
@@ -25,6 +26,9 @@ import java.util.Set;
 public class ShowtimeService
 {
     private static final Set<String> SORTABLE_FIELDS = Set.of("id", "startTime", "endTime");
+    /** Stand in for a missing bound, so one query serves every combination of filters. */
+    private static final Instant EARLIEST = Instant.parse("1900-01-01T00:00:00Z");
+    private static final Instant LATEST = Instant.parse("9999-01-01T00:00:00Z");
 
     private final ShowtimeRepository showtimeRepository;
     private final MovieRepository movieRepository;
@@ -40,13 +44,19 @@ public class ShowtimeService
         this.seatRepository = seatRepository;
     }
 
-    /** Lists showtimes, optionally only those of one movie. */
-    public PageResponse<ShowtimeResponse> list(Long movieId, Pageable pageable)
+    /**
+     * Lists showtimes, optionally only those of one movie and only those that
+     * start inside a window: at or after {@code from}, before {@code to}.
+     * A missing bound leaves that side open.
+     */
+    public PageResponse<ShowtimeResponse> list(Long movieId, Instant from, Instant to, Pageable pageable)
     {
         SortFields.requireAllowed(pageable, SORTABLE_FIELDS);
+        Instant start = from == null ? EARLIEST : from;
+        Instant end = to == null ? LATEST : to;
         Page<Showtime> page = movieId == null
-                ? showtimeRepository.findAll(pageable)
-                : showtimeRepository.findAllByMovieId(movieId, pageable);
+                ? showtimeRepository.findAllStartingBetween(start, end, pageable)
+                : showtimeRepository.findAllByMovieStartingBetween(movieId, start, end, pageable);
         return PageResponse.from(page.map(ShowtimeResponse::from));
     }
 

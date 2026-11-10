@@ -1,5 +1,10 @@
 server:
   port: 8080
+  # "native" when the API sits behind a reverse proxy or the web client: the
+  # client address then comes from the X-Forwarded-For header that the proxy
+  # sets (trusted only from private network addresses), so login attempts are
+  # counted per visitor and not per proxy. "none" ignores those headers.
+  forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
   # Finish the requests in flight before stopping (a deployment, a restart).
   shutdown: graceful
 
@@ -99,6 +104,15 @@ app:
     auth:
       max-requests: ${AUTH_RATE_LIMIT:10}
       window: PT1M
+  demo:
+    # Keeps a programme in an empty installation: halls and movies while there
+    # are none, and showtimes for today and the days ahead. Never changes or
+    # removes anything. Off by default; docker compose turns it on.
+    enabled: ${DEMO_DATA:false}
+    # How many days ahead, counting today, have showtimes.
+    days: 7
+    # The time zone of the cinema: demo showtimes start at 11:00, 14:15, 17:30 and 20:45 on its clock.
+    zone: ${CINEMA_TIME_ZONE:UTC}
   security:
     jwt:
       # HS256 signing key, at least 32 characters. Leave empty to generate a random

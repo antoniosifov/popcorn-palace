@@ -19,8 +19,19 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, Long>
     @EntityGraph(attributePaths = {"movie", "hall"})
     Page<Showtime> findAll(Pageable pageable);
 
+    /** Showtimes that start at or after {@code from} and before {@code to}. */
     @EntityGraph(attributePaths = {"movie", "hall"})
-    Page<Showtime> findAllByMovieId(Long movieId, Pageable pageable);
+    @Query("select s from Showtime s where s.startTime >= :from and s.startTime < :to")
+    Page<Showtime> findAllStartingBetween(@Param("from") Instant from, @Param("to") Instant to, Pageable pageable);
+
+    /** The same window, for one movie. */
+    @EntityGraph(attributePaths = {"movie", "hall"})
+    @Query("select s from Showtime s where s.movie.id = :movieId and s.startTime >= :from and s.startTime < :to")
+    Page<Showtime> findAllByMovieStartingBetween(@Param("movieId") Long movieId, @Param("from") Instant from,
+                                                 @Param("to") Instant to, Pageable pageable);
+
+    /** Whether the hall has a showtime starting inside the window. */
+    boolean existsByHallIdAndStartTimeGreaterThanEqualAndStartTimeLessThan(Long hallId, Instant from, Instant to);
 
     @EntityGraph(attributePaths = {"movie", "hall"})
     Optional<Showtime> findDetailedById(Long id);
