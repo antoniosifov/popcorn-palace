@@ -9,6 +9,7 @@ A movie ticket booking backend built with Java 21 and Spring Boot 4. It manages 
 - Versioned REST API (`/api/v1`) with request/response DTOs, pagination and an allow-list for sorting
 - Halls with row-by-row seat layouts, and a seat map per showtime with prices and availability
 - Live seat map: a browser subscribes to a showtime and sees seats become held, sold and free again as it happens, whichever instance of the API made the change
+- A catalogue that can keep itself current: with a TMDB key, the films in cinemas now are imported with their posters, stills, trailers and credits, and read again twice a day
 - Accounts with stateless JWT authentication and two roles: customers book, administrators manage the catalog
 - Checkout with temporary seat holds in Redis (atomic Lua scripts, automatic expiry) confirmed into bookings in PostgreSQL
 - Payments that are safe to retry: idempotency keys, a refund if the booking fails after the charge, and a job that settles payments left unfinished
@@ -20,7 +21,7 @@ A movie ticket booking backend built with Java 21 and Spring Boot 4. It manages 
 - Business rules enforced by database constraints, so they hold under concurrency
 - Uniform error responses in the RFC 9457 "problem details" format with machine-readable codes
 - Observability built in: health probes, Prometheus metrics for the business (holds, bookings, payments, outbox backlog, open seat maps) as well as the runtime, and one OpenTelemetry trace from the booking request through the outbox and Kafka to the ticket email, with the trace id in every response
-- 215 automated tests, most of them calling the API over HTTP against real PostgreSQL, Redis and Kafka
+- 233 automated tests, most of them calling the API over HTTP against real PostgreSQL, Redis and Kafka
 
 ## Architecture
 
@@ -165,9 +166,17 @@ Movie:
   "genre": "Science Fiction",
   "durationMinutes": 169,
   "rating": 8.7,
-  "releaseYear": 2014
+  "releaseYear": 2014,
+  "overview": "A team of explorers travels through a wormhole in search of a new home for humanity.",
+  "posterUrl": "https://image.tmdb.org/t/p/w500/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg",
+  "backdropUrl": "https://image.tmdb.org/t/p/w1280/xJHokMbljvjADYdit5fK5VQsXEG.jpg",
+  "trailerUrl": "https://www.youtube.com/watch?v=zSWdZVtXT7E",
+  "director": "Christopher Nolan",
+  "starring": ["Matthew McConaughey", "Anne Hathaway"]
 }
 ```
+
+The first five fields are required. The rest say how the movie is presented and are optional, as is `tagline`; the three addresses must be `https`, since they end up in pages. A response also carries `inCinemas` and `popularity`, which only the [import](#films-in-cinemas-now) sets.
 
 Hall. The layout is given as blocks of identical rows, from the screen to the back; rows are numbered across blocks. This example creates rows 1–8 with 12 standard seats and rows 9–10 with 10 VIP seats. A layout cannot be changed after creation, because bookings point at individual seats.
 
@@ -599,6 +608,34 @@ flowchart LR
 
 `SeatMapStreamTest` opens streams through MockMvc and checks that every change made through the API arrives in order, that an expired hold is reported without anyone in the application being involved, that a message published on the channel by "another instance" reaches this instance's browsers, that streams of other showtimes stay quiet, and that a closed browser is forgotten.
 
+## Films in cinemas now
+
+With `TMDB_API_KEY` set, the catalogue is filled from [TMDB](https://www.themoviedb.org) and kept current. Without it nothing here runs, and the catalogue is whatever an administrator (or the demo programme) put in it.
+
+`TmdbCatalogSync` runs at startup, before the demo programme, so the first programme is already made of current films, and then every twelve hours:
+
+1. **Read the list.** `GET /movie/now_playing` for the region (`TMDB_REGION`), most popular first. Films marked adult, or without a poster or a description, are skipped; the first `TMDB_LIMIT` of the rest are taken.
+2. **Read each film.** `GET /movie/{id}` with `append_to_response=videos,credits`: the runtime, tagline, genres, the director, the first four of the cast and the official YouTube trailer in one call. A film without a runtime is skipped, since a showtime could not be scheduled for it.
+3. **Write it.** A movie is found by its `tmdb_id` (unique, migration `V8`) and updated, or created. A movie somebody added by hand is never touched: if a title is already taken, the imported film gets its year appended.
+4. **Retire what left.** A movie that came from TMDB and is no longer on the list stops being `inCinemas`. It stays in the catalogue with its showtimes and bookings; the demo programme just stops scheduling it.
+
+The import changes the catalogue, never the schedule: showtimes that exist stay as they are, with their bookings. The demo programme, which only fills days that have no showtimes yet, picks the current films up from the next day it schedules.
+
+| What goes wrong | What happens |
+| --- | --- |
+| TMDB is down, slow (3 s to connect, 10 s to answer) or refuses the key | A warning in the log; the catalogue stays as it is and the next run tries again |
+| TMDB answers with an empty list | Nobody is retired: an empty answer is not evidence that every cinema closed |
+| One film cannot be read or saved | That film is skipped, the rest are imported |
+
+Two details:
+
+- **The key is a secret, and is treated as one.** TMDB issues two kinds: an access token, sent as a `Bearer` header, and an older key that has to go into the query string. Both work. With the older kind the calls are left out of tracing, because a span records the address that was called. `TmdbProperties.toString` hides the key, and the browser never sees it: the web client only receives the addresses of pictures.
+- **Pictures are not downloaded.** The API stores the address of a poster and of a still. The size is a part of a TMDB picture's address, so the web client asks TMDB's servers for the size each screen needs.
+
+`TmdbCatalogSyncTest` runs the import against a stand-in for TMDB over HTTP: a first import, an update, a retired film, a title that is taken, each of the failures above, and both kinds of key.
+
+This product uses the TMDB API but is not endorsed or certified by TMDB.
+
 ## Observability
 
 Three questions an operator asks: is it up, how is it doing, and what happened to this one request. Each has its own answer, all served on a management port (8081) that is reachable inside the stack only, never through the public API port.
@@ -667,6 +704,8 @@ Every log line names the application, trace and span (`[popcorn-palace,4bf92f35�
 | `V4` | A booking can contain several seats (`booking_seats`) |
 | `V5` | Payments; bookings get a status and a payment; cancelled seats stop blocking new sales |
 | `V6` | The outbox table for booking events |
+| `V7` | The outbox row carries the trace context of the request that wrote it |
+| `V8` | How a movie is presented (description, tagline, poster, still, trailer, director, cast) and where it came from (`tmdb_id`, popularity, whether it is in cinemas) |
 
 `V2` migrates existing data instead of dropping it: each distinct theater name becomes a hall with 15 × 20 seats (the first API accepted seat numbers 1–300), the old showtime price becomes its standard price, and each booking is pointed at its seat and keeps the price it was sold for. `V3` gives the user ids carried by older bookings placeholder accounts that cannot be logged into, so the new foreign key holds. `V4` turns each existing single-seat booking into an order with one seat row. `SchemaMigrationTest` builds a database at `V1`, fills it, migrates to the latest version and checks the result.
 
@@ -687,7 +726,7 @@ docker compose up --build
 
 The web client is at http://localhost:3000, the API at http://localhost:8080; Flyway creates the schema on first start. Compose also creates a development administrator, `admin@popcorn.local` with the password `admin-dev-password`; change both in `.env` (see `.env.example`) for anything that is not your own machine.
 
-In compose the API also keeps a **demo programme** (`DEMO_DATA=true`), so an empty installation has something to show: three halls and eight movies when the catalog is empty, and showtimes for today and the six days after it, at 11:00, 14:15, 17:30 and 20:45 on the cinema's clock (`CINEMA_TIME_ZONE`). It runs at startup and once an hour, and only ever adds: a catalog somebody manages is not touched, and a hall gets a day of showtimes only if nothing starts in it that day. Everything is created through the same services the API uses, so the demo data obeys every rule real data does.
+In compose the API also keeps a **demo programme** (`DEMO_DATA=true`), so an empty installation has something to show: three halls and eight movies when the catalog is empty, and showtimes for today and the six days after it, at 11:00, 14:15, 17:30 and 20:45 on the cinema's clock (`CINEMA_TIME_ZONE`). When the [import](#films-in-cinemas-now) has brought in films that are in cinemas, those are the ones scheduled. It runs at startup and once an hour, and only ever adds: a catalog somebody manages is not touched, and a hall gets a day of showtimes only if nothing starts in it that day. Everything is created through the same services the API uses, so the demo data obeys every rule real data does.
 
 The stack watches itself: Grafana at http://localhost:3001 (the dashboard opens as the home page, no login needed to view), Jaeger at http://localhost:16686 (search the `popcorn-palace` service and open the trace of a confirmed hold: the Kafka send and the notifications service's email hang under it), Prometheus at http://localhost:9090.
 
@@ -728,6 +767,9 @@ Windows:
 | `AUTH_RATE_LIMIT` | Login and registration attempts per client address per minute | `10` |
 | `FORWARD_HEADERS_STRATEGY` | `native` behind the web client or a reverse proxy: the client address comes from `X-Forwarded-For` | `none` |
 | `DEMO_DATA` | `true` keeps a demo programme: halls, movies and a week of showtimes | `false` (`true` in compose) |
+| `TMDB_API_KEY` | A TMDB access token or API key: imports the films in cinemas now. Empty switches the import off | empty |
+| `TMDB_REGION`, `TMDB_LANGUAGE` | Whose cinemas, and the language of titles and descriptions | `US`, `en-US` |
+| `TMDB_LIMIT` | How many films are kept on the programme | `16` |
 | `CINEMA_TIME_ZONE` | The IANA time zone the demo programme is scheduled in | `UTC` |
 | `JWT_SECRET` | Key that signs access tokens, at least 32 characters | empty: a random key per start, so tokens stop working after a restart |
 | `JWT_TTL` | Lifetime of an access token (ISO-8601 duration) | `PT1H` |
@@ -755,4 +797,4 @@ Windows:
 
 Docker must be running: the API tests start disposable PostgreSQL, Redis and Kafka containers through Testcontainers and call the application over HTTP, so they exercise JSON mapping, validation, security, transactions, migrations, constraints, the Redis scripts, the outbox, the live seat map and the management endpoints together. Rules that need no database (text normalization, request validation, sort allow-list) have plain unit tests.
 
-Current suite: **215 tests passing**. The notifications service has its own suite, see its [README](../notifications/README.md).
+Current suite: **233 tests passing**. The notifications service has its own suite, see its [README](../notifications/README.md).
