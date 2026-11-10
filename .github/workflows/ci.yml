@@ -54,6 +54,41 @@ jobs:
       - name: Build and test
         run: ./mvnw -B -ntp verify
 
+  frontend:
+    name: Web client checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Formatting
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Types
+        run: npm run typecheck
+
+      # Unit and component tests: the rules of the seat map and the checkout, without a browser or a server.
+      - name: Unit tests
+        run: npm test
+
+      # The build needs no API: every page is a shell that is filled at request time.
+      - name: Build
+        run: npm run build
+
   docker:
     name: Docker images
     runs-on: ubuntu-latest
@@ -66,6 +101,9 @@ jobs:
       - name: Build notifications image
         run: docker build -t popcorn-palace-notifications ./notifications
 
+      - name: Build web client image
+        run: docker build -t popcorn-palace-web ./frontend
+
       # Catches mistakes in compose.yml without starting anything.
       - name: Validate compose file
         run: docker compose config --quiet
@@ -77,3 +115,48 @@ jobs:
 
       - name: Validate Grafana dashboard
         run: python3 -m json.tool observability/grafana/dashboards/popcorn-palace.json > /dev/null
+
+  # A real browser against the whole stack, as docker compose runs it: web
+  # client, API, PostgreSQL, Redis, Kafka, the notifications service and the
+  # mail catcher. A booking made in the browser has to end as an email.
+  e2e:
+    name: End-to-end tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Start the stack
+        run: docker compose up -d --build --wait
+        env:
+          # Every test registers its own customers, all from this one address.
+          AUTH_RATE_LIMIT: 1000
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies and a browser
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run the tests
+        working-directory: frontend
+        run: npm run e2e
+
+      - name: Logs of the stack
+        if: failure()
+        run: docker compose logs --no-color --tail=300 web api notifications
+
+      - name: Keep the report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+          retention-days: 7
