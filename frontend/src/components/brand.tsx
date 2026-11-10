@@ -25,7 +25,10 @@ export function Mark({ size = 20 }: { size?: number }) {
 
 export function Wordmark() {
   return (
-    <Link href="/" className="flex flex-none items-center gap-2.5 text-[15px] font-semibold tracking-[-0.01em]">
+    <Link
+      href="/"
+      className="flex flex-none items-center gap-3 font-[family-name:var(--font-display)] text-[22px] tracking-[-0.01em]"
+    >
       <Mark />
       Popcorn Palace
     </Link>

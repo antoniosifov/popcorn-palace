@@ -27,12 +27,12 @@ const GROUPS: { key: BookingGroup; label: string; empty: string }[] = [
 
 export default function BookingsPage({ searchParams }: PageProps<"/bookings">) {
   return (
-    <>
+    <div className="column page-top">
       <TitleRow title="My bookings" />
       <Suspense fallback={<BookingsSkeleton />}>
         <Bookings searchParams={searchParams} />
       </Suspense>
-    </>
+    </div>
   );
 }
 
@@ -108,7 +108,7 @@ async function Bookings({ searchParams }: Pick<PageProps<"/bookings">, "searchPa
                     href={`/bookings/${booking.id}`}
                     className="group grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-2 py-4 md:grid-cols-[auto_minmax(0,1fr)_auto_112px]"
                   >
-                    <Poster title={booking.movieTitle} />
+                    <Poster title={booking.movieTitle} url={booking.moviePosterUrl} sizes="64px" className="w-16" />
                     <div className="min-w-0">
                       <h2 className="truncate text-section font-semibold group-hover:underline group-hover:underline-offset-4">
                         {booking.movieTitle}
@@ -150,7 +150,7 @@ function BookingsSkeleton() {
       <div className="card">
         {Array.from({ length: 3 }, (_, index) => (
           <div key={index} className="flex items-center gap-4 border-t border-rule py-4 first:border-t-0">
-            <div className="skeleton h-[75px] w-[50px] flex-none" />
+            <div className="skeleton h-24 w-16 flex-none" />
             <div className="grid flex-1 gap-2">
               <div className="skeleton h-5 w-56 max-w-full" />
               <div className="skeleton h-4 w-72 max-w-full" />

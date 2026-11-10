@@ -63,18 +63,28 @@ async function BookingContent({ params }: Pick<PageProps<"/bookings/[id]">, "par
   const cancelled = booking.status === "CANCELLED";
 
   return (
-    <>
-      <p className="mb-3 text-label">
+    <div className="column page-top">
+      <p className="mb-4 text-label">
         <Link href="/bookings" className="link-quiet">
           My bookings
         </Link>
       </p>
 
-      <header className="card mb-3.5 flex flex-wrap items-center gap-4 p-3.5">
-        <Poster title={booking.movieTitle} size="header" />
+      <header className="mb-6 flex flex-wrap items-center gap-5">
+        <Poster
+          title={booking.movieTitle}
+          url={booking.moviePosterUrl}
+          sizes="72px"
+          className="w-[72px] flex-none"
+          eager
+        />
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-title font-semibold tracking-[-0.01em]">{booking.movieTitle}</h1>
-          <p className="mt-0.5 text-muted">
+          <h1 className="display display-row">
+            <Link href={`/movies/${booking.movieId}`} className="hover:text-accent-strong">
+              {booking.movieTitle}
+            </Link>
+          </h1>
+          <p className="mt-2 text-muted">
             {formatDay(booking.startTime, zone)} · <span className="num">{formatTime(booking.startTime, zone)}</span> ·{" "}
             {booking.hallName}
           </p>
@@ -165,7 +175,7 @@ async function BookingContent({ params }: Pick<PageProps<"/bookings/[id]">, "par
           ) : null}
         </section>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -195,10 +205,10 @@ function paymentWords(status: NonNullable<Booking["payment"]>["status"]): string
 
 function BookingSkeleton() {
   return (
-    <>
-      <div className="skeleton mb-3 h-[18px] w-28" />
-      <div className="card mb-3.5 flex items-center gap-4 p-3.5">
-        <div className="skeleton h-[62px] w-[50px] flex-none" />
+    <div className="column page-top">
+      <div className="skeleton mb-4 h-5 w-28" />
+      <div className="mb-6 flex items-center gap-5">
+        <div className="skeleton h-[108px] w-[72px] flex-none" />
         <div className="grid flex-1 gap-2">
           <div className="skeleton h-7 w-64 max-w-full" />
           <div className="skeleton h-5 w-80 max-w-full" />
@@ -208,6 +218,6 @@ function BookingSkeleton() {
         <div className="card h-[280px]" />
         <div className="card h-[220px]" />
       </div>
-    </>
+    </div>
   );
 }

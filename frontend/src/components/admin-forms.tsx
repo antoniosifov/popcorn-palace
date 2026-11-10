@@ -61,6 +61,14 @@ export type MovieValues = {
   durationMinutes: string;
   rating: string;
   releaseYear: string;
+  overview?: string;
+  tagline?: string;
+  posterUrl?: string;
+  backdropUrl?: string;
+  trailerUrl?: string;
+  director?: string;
+  /** The cast as it is typed: names separated by commas. */
+  starring?: string;
 };
 
 export function MovieForm({ movie }: { movie?: MovieValues }) {
@@ -130,6 +138,93 @@ export function MovieForm({ movie }: { movie?: MovieValues }) {
             />
           </Field>
         </div>
+      </Section>
+      <Section
+        title="On the programme"
+        description="What a customer reads before choosing. All of it is optional: a film without a poster gets a drawn title card."
+      >
+        <Field label="What it is about" name="overview" error={errors.overview}>
+          <textarea
+            {...fieldProps("overview", errors.overview)}
+            className="input h-36 resize-y py-3 leading-6"
+            maxLength={4000}
+            defaultValue={value("overview")}
+          />
+        </Field>
+        <Field label="Tagline" name="tagline" error={errors.tagline}>
+          <input
+            {...fieldProps("tagline", errors.tagline)}
+            className="input"
+            maxLength={300}
+            defaultValue={value("tagline")}
+          />
+        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Directed by" name="director" error={errors.director}>
+            <input
+              {...fieldProps("director", errors.director)}
+              className="input"
+              maxLength={200}
+              defaultValue={value("director")}
+            />
+          </Field>
+          <Field label="Starring" name="starring" error={errors.starring} hint="Names separated by commas.">
+            <input
+              {...fieldProps("starring", errors.starring, "Names separated by commas.")}
+              className="input"
+              defaultValue={value("starring")}
+            />
+          </Field>
+        </div>
+      </Section>
+      <Section
+        title="Artwork"
+        description="Addresses of pictures that are already on the web, starting with https. Films imported from TMDB come with theirs."
+      >
+        <Field
+          label="Poster"
+          name="posterUrl"
+          error={errors.posterUrl}
+          hint="An upright picture, two wide by three tall."
+        >
+          <input
+            {...fieldProps("posterUrl", errors.posterUrl, "An upright picture, two wide by three tall.")}
+            className="input"
+            type="url"
+            inputMode="url"
+            maxLength={500}
+            defaultValue={value("posterUrl")}
+          />
+        </Field>
+        <Field
+          label="Still"
+          name="backdropUrl"
+          error={errors.backdropUrl}
+          hint="A wide frame of the film; it fills the top of its page."
+        >
+          <input
+            {...fieldProps(
+              "backdropUrl",
+              errors.backdropUrl,
+              "A wide frame of the film; it fills the top of its page.",
+            )}
+            className="input"
+            type="url"
+            inputMode="url"
+            maxLength={500}
+            defaultValue={value("backdropUrl")}
+          />
+        </Field>
+        <Field label="Trailer" name="trailerUrl" error={errors.trailerUrl}>
+          <input
+            {...fieldProps("trailerUrl", errors.trailerUrl)}
+            className="input"
+            type="url"
+            inputMode="url"
+            maxLength={500}
+            defaultValue={value("trailerUrl")}
+          />
+        </Field>
       </Section>
       <Actions pending={pending} label={movie?.id ? "Save movie" : "Add movie"} cancelHref="/admin/movies" />
     </form>

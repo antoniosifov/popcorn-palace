@@ -43,13 +43,13 @@ export function Nav({ user }: { user: NavUser | null }) {
 
   return (
     <>
-      <nav aria-label="Main" className="hidden flex-1 items-center gap-6 md:flex">
+      <nav aria-label="Main" className="hidden flex-1 items-center gap-7 md:flex">
         {links.map((item) => (
           <Link
             key={item.href}
             href={item.href}
             aria-current={isCurrent(pathname, item.href) ? "page" : undefined}
-            className="text-body font-semibold text-muted transition-colors duration-150 hover:text-ink aria-[current=page]:text-ink"
+            className="text-label font-medium text-muted transition-colors duration-150 hover:text-ink aria-[current=page]:text-ink"
           >
             {item.label}
           </Link>
@@ -59,7 +59,7 @@ export function Nav({ user }: { user: NavUser | null }) {
       <div className="hidden items-center gap-4 md:flex">
         {user ? (
           <>
-            <span className="max-w-[18ch] truncate text-muted">{user.displayName}</span>
+            <span className="max-w-[18ch] truncate text-label text-muted">{user.displayName}</span>
             <form action={logout}>
               <button type="submit" className="btn btn-secondary">
                 Log out
@@ -89,9 +89,9 @@ export function Nav({ user }: { user: NavUser | null }) {
       </button>
 
       {open ? (
-        <div id="menu-sheet" className="fixed inset-0 z-20 overflow-y-auto bg-ground md:hidden">
-          <div className="column flex h-12 items-center justify-between">
-            <span className="text-[15px] font-semibold">Menu</span>
+        <div id="menu-sheet" className="fixed inset-0 z-30 overflow-y-auto bg-ground md:hidden">
+          <div className="column flex h-[72px] items-center justify-between">
+            <span className="font-[family-name:var(--font-display)] text-[22px]">Menu</span>
             <button type="button" className="btn btn-secondary" onClick={() => setOpenOn(null)}>
               Close
             </button>
@@ -103,12 +103,12 @@ export function Nav({ user }: { user: NavUser | null }) {
                 href={item.href}
                 aria-current={isCurrent(pathname, item.href) ? "page" : undefined}
                 onClick={() => setOpenOn(null)}
-                className="flex h-12 items-center border-b border-rule text-section font-semibold text-muted aria-[current=page]:text-ink"
+                className="display py-3 text-[2.25rem] text-muted aria-[current=page]:text-ink"
               >
                 {item.label}
               </Link>
             ))}
-            <div className="flex flex-col gap-3 pt-6">
+            <div className="flex flex-col gap-3 pt-8">
               {user ? (
                 <>
                   <p className="text-muted">Logged in as {user.displayName}</p>

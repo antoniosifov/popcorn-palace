@@ -5,9 +5,9 @@ import type { ActionError } from "@/lib/errors";
 /** The title of a screen: a noun at 20px, an optional sentence about the data, and the screen's action. */
 export function TitleRow({ title, sub, action }: { title: string; sub?: ReactNode; action?: ReactNode }) {
   return (
-    <div className="mb-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+    <div className="mb-7 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
       <div className="min-w-0">
-        <h1 className="text-title font-semibold tracking-[-0.01em]">{title}</h1>
+        <h1 className="display display-row">{title}</h1>
         {sub ? <p className="mt-1 text-muted">{sub}</p> : null}
       </div>
       {action}

@@ -14,6 +14,26 @@ import {
   register,
 } from "./support";
 
+test("a film has a page of its own, with its showtimes and the rest of the programme", async ({ page }) => {
+  await page.goto("/");
+  await page
+    .getByRole("link", { name: /about the film/i })
+    .first()
+    .click();
+
+  await expect(page).toHaveURL(/\/movies\/\d+$/);
+  const title = await page.getByRole("heading", { level: 1 }).innerText();
+  await expect(page.getByRole("heading", { name: "Showtimes" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Choose seats" })).toBeVisible();
+
+  // The rest of the programme is offered from every film's page, and leads to another film.
+  const others = page.getByRole("region", { name: "Also showing" }).getByRole("link");
+  await others.first().click();
+
+  await expect(page).toHaveURL(/\/movies\/\d+$/);
+  await expect(page.getByRole("heading", { level: 1 })).not.toHaveText(title);
+});
+
 test("a page that needs an account sends a visitor to log in and then back to it", async ({ page }) => {
   const customer = newCustomer();
   await register(page, customer);

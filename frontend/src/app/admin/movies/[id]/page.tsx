@@ -42,6 +42,13 @@ async function Form({ params }: Pick<PageProps<"/admin/movies/[id]">, "params">)
         durationMinutes: String(movie.durationMinutes),
         rating: movie.rating.toFixed(1),
         releaseYear: String(movie.releaseYear),
+        overview: movie.overview ?? "",
+        tagline: movie.tagline ?? "",
+        posterUrl: movie.posterUrl ?? "",
+        backdropUrl: movie.backdropUrl ?? "",
+        trailerUrl: movie.trailerUrl ?? "",
+        director: movie.director ?? "",
+        starring: movie.starring.join(", "),
       }}
     />
   );
