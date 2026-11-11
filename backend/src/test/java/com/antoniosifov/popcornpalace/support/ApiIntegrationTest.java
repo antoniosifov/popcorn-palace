@@ -17,6 +17,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.ResultMatcher;
@@ -73,6 +75,17 @@ public abstract class ApiIntegrationTest
     /** The prices of showtimes made by {@link #createShowtime}. */
     protected static final String DEFAULT_PRICES = """
             {"STANDARD": 14.50, "VIP": 22.00}""";
+
+    /**
+     * Signing in with Google is on in every test, against a stand-in for Google.
+     * Declared here, for all of them, so that they still share one application.
+     */
+    @DynamicPropertySource
+    static void google(DynamicPropertyRegistry registry)
+    {
+        registry.add("app.google.client-id", () -> FakeGoogle.CLIENT_ID);
+        registry.add("app.google.jwk-set-uri", FakeGoogle::jwkSetUri);
+    }
 
     @Autowired
     private WebApplicationContext context;

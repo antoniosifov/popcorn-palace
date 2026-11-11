@@ -21,6 +21,9 @@ import java.util.UUID;
 @NoArgsConstructor(access = AccessLevel.PROTECTED) // required by JPA, not for application code
 public class User
 {
+    /** Not a hash of anything: no password matches it. The mark of an account that has none. */
+    public static final String NO_PASSWORD = "!";
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
@@ -47,6 +50,14 @@ public class User
     @Column(name = "session_version", nullable = false)
     private int sessionVersion;
 
+    /** How Google names the account this one is connected to, if it is. Not the email: that can change there. */
+    @Column(name = "google_subject")
+    private String googleSubject;
+
+    /** Whether the person behind the account has shown that the email is theirs. */
+    @Column(name = "email_verified", nullable = false)
+    private boolean emailVerified;
+
     public User(String email, String passwordHash, String displayName, Role role, Instant createdAt)
     {
         this.email = normalizeEmail(email);
@@ -54,6 +65,40 @@ public class User
         this.displayName = displayName;
         this.role = role;
         this.createdAt = createdAt;
+    }
+
+    /**
+     * An account opened by signing in with Google: no password of its own, and
+     * an email Google has vouched for.
+     */
+    public static User signedInWithGoogle(String email, String displayName, Role role, Instant createdAt, String googleSubject)
+    {
+        User user = new User(email, NO_PASSWORD, displayName, role, createdAt);
+        user.googleSubject = googleSubject;
+        user.emailVerified = true;
+        return user;
+    }
+
+    /** From now on signing in with this Google account means this account. Google has vouched for the email. */
+    public void connectGoogle(String googleSubject)
+    {
+        this.googleSubject = googleSubject;
+        this.emailVerified = true;
+    }
+
+    /** The person has opened a link that was sent to the email: it is theirs. */
+    public void confirmEmail()
+    {
+        this.emailVerified = true;
+    }
+
+    /**
+     * Nobody can log in with a password any more, and nobody who was logged in
+     * stays so. A new password can still be set through a reset link.
+     */
+    public void removePassword()
+    {
+        changePassword(NO_PASSWORD);
     }
 
     /**
