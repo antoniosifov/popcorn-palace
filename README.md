@@ -151,7 +151,7 @@ Every API response carries the trace id in its `X-Trace-Id` header, and the web 
 | Suite | Count | What it runs against |
 | --- | --- | --- |
 | API | 233 | The application over HTTP with real PostgreSQL, Redis and Kafka (Testcontainers) |
-| Notifications service | 8 | Real Kafka and Redis, an in-memory mail server |
+| Notifications service | 10 | Real Kafka and Redis, an in-memory mail server |
 | Web client, unit and component | 98 | The rules of the seat map, the checkout, time zones, pictures and errors, without a browser |
 | End to end | 13 | A real browser against the whole stack: a booking has to arrive as an email |
 
