@@ -37,6 +37,8 @@ To run it from the IDE, start the infrastructure only (`docker compose up db red
 | `KAFKA_BOOTSTRAP_SERVERS` | Kafka | `localhost:29092` |
 | `REDIS_HOST`, `REDIS_PORT` | Redis, for handled event ids | `localhost:6379` |
 | `MAIL_HOST`, `MAIL_PORT` | SMTP server | `localhost:1025` |
+| `MAIL_USERNAME`, `MAIL_PASSWORD` | The account at a real mail service; the mail catcher of the local stack needs none | empty |
+| `MAIL_SECURE` | `true` for a real mail service: log in, and send nothing, the password included, unless the connection has been encrypted first (STARTTLS, port 587) | `false` |
 | `MAIL_FROM` | Sender shown on the emails | `Popcorn Palace <tickets@popcorn-palace.local>` |
 | `NOTIFICATION_TIME_ZONE` | Showtimes are printed in this time zone | `UTC` |
 | `MANAGEMENT_PORT` | Health and metrics; keep it inside the network | `8081` |
@@ -50,4 +52,4 @@ To run it from the IDE, start the infrastructure only (`docker compose up db red
 ./mvnw verify
 ```
 
-Docker must be running: the tests start Kafka and Redis through Testcontainers and an in-memory SMTP server (GreenMail), publish events to the real topic and wait for the emails to arrive. They cover the ticket and cancellation emails, duplicate delivery, unknown event types, malformed messages going to the dead-letter topic, a mail server that stays down, the trace id travelling from the Kafka message into the email, and the health and metrics endpoints.
+Docker must be running: the tests start Kafka and Redis through Testcontainers and an in-memory SMTP server (GreenMail), publish events to the real topic and wait for the emails to arrive. They cover the ticket and cancellation emails, duplicate delivery, unknown event types, malformed messages going to the dead-letter topic, a mail server that stays down, the trace id travelling from the Kafka message into the email, the health and metrics endpoints, and the settings of a real mail service: with `MAIL_SECURE` on, nothing is sent to a server that offers no encryption.

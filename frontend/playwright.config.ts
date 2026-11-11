@@ -18,6 +18,8 @@ export default defineConfig({
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000",
+    // For the production layer tried out on a laptop, where the certificate comes from Caddy's own authority.
+    ignoreHTTPSErrors: process.env.E2E_IGNORE_HTTPS_ERRORS === "true",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },

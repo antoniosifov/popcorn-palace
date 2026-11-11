@@ -13,3 +13,4 @@ mvnw text eol=lf
 *.png binary
 *.jpg binary
 *.gif binary
+Caddyfile text eol=lf

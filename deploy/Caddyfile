@@ -1,0 +1,39 @@
+# The web server in front of the stack on a server (see compose.prod.yml).
+# Four names, each with its own certificate, which Caddy gets and renews itself;
+# plain HTTP is redirected to HTTPS. The names come from .env.
+
+(common) {
+	encode zstd gzip
+	header {
+		# A browser that has been here once never tries plain HTTP again.
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		-Server
+	}
+}
+
+# The cinema: the web client, which is the only thing a customer's browser talks to.
+{$SITE_HOST} {
+	import common
+	header Referrer-Policy strict-origin-when-cross-origin
+	reverse_proxy web:3000
+}
+
+# The API on its own, for whoever wants to read it or call it: Swagger UI at the root.
+{$API_HOST} {
+	import common
+	redir / /swagger-ui.html
+	reverse_proxy api:8080
+}
+
+# The dashboard. Anyone may look; changing it needs the admin password.
+{$GRAFANA_HOST} {
+	import common
+	reverse_proxy grafana:3000
+}
+
+# Traces: a booking from the click to the email.
+{$TRACES_HOST} {
+	import common
+	reverse_proxy jaeger:16686
+}

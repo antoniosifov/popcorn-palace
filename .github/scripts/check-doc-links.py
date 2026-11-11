@@ -7,7 +7,7 @@ import re
 import sys
 
 root = pathlib.Path(__file__).resolve().parents[2]
-files = [root / "README.md", root / "backend/README.md", root / "frontend/README.md", root / "notifications/README.md"]
+files = [root / "README.md", root / "backend/README.md", root / "frontend/README.md", root / "notifications/README.md", root / "deploy/README.md"]
 
 
 def slugs(text):
