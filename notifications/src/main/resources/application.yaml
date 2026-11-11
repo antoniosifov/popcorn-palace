@@ -56,6 +56,10 @@ app:
   events:
     # Kafka topic the booking API publishes to.
     booking-topic: popcorn.booking-events
+    # Kafka topic for what happens to an account (a password reset was asked for),
+    # and how long Kafka keeps its messages: they can carry a reset link.
+    account-topic: popcorn.account-events
+    account-retention: PT1H
   notifications:
     from: ${MAIL_FROM:Popcorn Palace <tickets@popcorn-palace.local>}
     # Showtimes are printed in this time zone in emails.
