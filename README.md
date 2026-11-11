@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/antoniosifov/popcorn-palace/actions/workflows/ci.yml/badge.svg)](https://github.com/antoniosifov/popcorn-palace/actions/workflows/ci.yml)
 
+**It is running: [popcorn.antoniosifov.com](https://popcorn.antoniosifov.com).** Book a seat (payments are a sandbox, a ticket really is emailed), then look at what the booking did: [the API](https://api.popcorn.antoniosifov.com), [the dashboard](https://grafana.popcorn.antoniosifov.com) and [the traces](https://traces.popcorn.antoniosifov.com).
+
 A cinema's ticketing product: see what is in cinemas now, choose seats on a seat map that changes as other people book, pay, and get the tickets by email. A web client, a booking API and a notifications service, with PostgreSQL, Redis and Kafka behind them, started by one command.
 
 ![Two browsers on the same showtime: seats one customer holds and then buys change on the other customer's screen without a reload](docs/screenshots/live-seat-map.gif)
@@ -152,7 +154,7 @@ Every API response carries the trace id in its `X-Trace-Id` header, and the web 
 | --- | --- | --- |
 | API | 233 | The application over HTTP with real PostgreSQL, Redis and Kafka (Testcontainers) |
 | Notifications service | 10 | Real Kafka and Redis, an in-memory mail server |
-| Web client, unit and component | 98 | The rules of the seat map, the checkout, time zones, pictures and errors, without a browser |
+| Web client, unit and component | 104 | The rules of the seat map, the checkout, time zones, pictures and errors, without a browser |
 | End to end | 13 | A real browser against the whole stack: a booking has to arrive as an email |
 
 All of it runs in CI on every pull request. The end-to-end job starts the stack with `docker compose`, the same way the section above does.
@@ -198,7 +200,7 @@ The API finds the database through `DB_URL`, `DB_USERNAME` and `DB_PASSWORD`, wh
 - **One cinema.** There is one programme and one time zone, not a chain.
 - **No refresh tokens.** A session lasts as long as its access token, one hour.
 - **The pictures are not its own.** Film information, posters and stills come from TMDB and are served by TMDB's picture servers; the API stores their addresses, not the files. This product uses the TMDB API but is not endorsed or certified by TMDB.
-- **No public demo yet.** Everything a server needs is in the repository (see [Running it on a server](deploy/README.md)): the production layer over the compose file, HTTPS, and a workflow that releases every change to `main`. The server itself is the next step.
+- **One small server.** The public site is the whole stack on one machine ([Running it on a server](deploy/README.md)): no backups, no second machine, no alerts. The programme is real, the cinema is not.
 
 ## Repository
 
