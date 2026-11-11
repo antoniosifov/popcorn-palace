@@ -2,6 +2,7 @@ package com.antoniosifov.popcornpalace.auth;
 
 import com.antoniosifov.popcornpalace.security.CurrentUser;
 import com.antoniosifov.popcornpalace.security.SecurityProperties;
+import com.antoniosifov.popcornpalace.security.SessionVersions;
 import com.antoniosifov.popcornpalace.user.Role;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
@@ -41,8 +42,11 @@ public class TokenService
      * The token carries only what is needed to authorize a request: who the
      * account is (subject) and its role. No email or name, so nothing personal
      * is exposed if a token leaks into a log.
+     *
+     * @param sessionVersion the account's current session version; a token stops
+     *                       working when the account moves past it (see {@link SessionVersions})
      */
-    public IssuedToken issue(UUID userId, Role role)
+    public IssuedToken issue(UUID userId, Role role, int sessionVersion)
     {
         Instant issuedAt = clock.instant().truncatedTo(ChronoUnit.SECONDS);
         Instant expiresAt = issuedAt.plus(ttl);
@@ -52,6 +56,7 @@ public class TokenService
                 .issuedAt(issuedAt)
                 .expiresAt(expiresAt)
                 .claim(CurrentUser.ROLE_CLAIM, role.name())
+                .claim(SessionVersions.CLAIM, sessionVersion)
                 .build();
         JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
         String token = jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();

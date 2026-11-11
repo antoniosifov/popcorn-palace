@@ -59,6 +59,8 @@ springdoc:
     path: /swagger-ui.html
 
 app:
+  # The address customers reach the site at. Links in emails are built from it.
+  site-url: ${SITE_URL:http://localhost:3000}
   cors:
     # Browser origins allowed to call the API.
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
@@ -72,6 +74,18 @@ app:
   events:
     # Kafka topic that booking events (confirmed, cancelled) are published to.
     booking-topic: popcorn.booking-events
+    # Kafka topic for what happens to an account (a password reset was asked for).
+    account-topic: popcorn.account-events
+    # Its messages can carry a link that lets its holder into an account, so
+    # Kafka keeps them only this long.
+    account-retention: PT1H
+  password-reset:
+    # How long the link in the email works.
+    ttl: ${PASSWORD_RESET_TTL:PT30M}
+    # Emails one account is sent per window, whoever asks and from wherever:
+    # the form must not become a way to fill somebody's mailbox.
+    max-emails: 3
+    window: PT1H
   outbox:
     # How often events waiting in the outbox table are sent to Kafka.
     relay-interval: ${OUTBOX_RELAY_INTERVAL:PT0.5S}

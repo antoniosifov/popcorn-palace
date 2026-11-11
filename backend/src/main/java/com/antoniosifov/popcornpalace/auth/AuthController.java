@@ -15,17 +15,20 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/auth")
-@Tag(name = "Authentication", description = "Create an account and obtain an access token")
-@EnableConfigurationProperties(AuthRateLimitProperties.class)
+@Tag(name = "Authentication", description = "Create an account, obtain an access token, replace a forgotten password")
+@EnableConfigurationProperties({AuthRateLimitProperties.class, PasswordResetProperties.class})
 public class AuthController
 {
     private final AuthService authService;
+    private final PasswordResetService passwordResetService;
     private final RateLimiter rateLimiter;
     private final AuthRateLimitProperties rateLimit;
 
-    public AuthController(AuthService authService, RateLimiter rateLimiter, AuthRateLimitProperties rateLimit)
+    public AuthController(AuthService authService, PasswordResetService passwordResetService,
+                          RateLimiter rateLimiter, AuthRateLimitProperties rateLimit)
     {
         this.authService = authService;
+        this.passwordResetService = passwordResetService;
         this.rateLimiter = rateLimiter;
         this.rateLimit = rateLimit;
     }
@@ -49,9 +52,34 @@ public class AuthController
         return authService.login(request);
     }
 
+    @PostMapping("/password-reset")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    @Operation(summary = "Ask for a link to set a new password", description = """
+            Always answers 202, whether or not the email has an account, so the endpoint cannot be used \
+            to find out which emails are registered. If it has one, an email with a link is sent; the link \
+            works once, for 30 minutes, and replaces any link sent before it. One account is sent at most \
+            three such emails an hour.""")
+    public void requestPasswordReset(@Valid @RequestBody PasswordResetRequest request, HttpServletRequest httpRequest)
+    {
+        throttle(httpRequest);
+        passwordResetService.request(request.email());
+    }
+
+    @PostMapping("/password-reset/confirm")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "Set a new password with the token from the email", description = """
+            Fails with 400 RESET_LINK_INVALID for a token that is unknown, expired, replaced by a newer one \
+            or already used. On success every access token issued to the account before stops working.""")
+    public void confirmPasswordReset(@Valid @RequestBody PasswordResetConfirmRequest request, HttpServletRequest httpRequest)
+    {
+        throttle(httpRequest);
+        passwordResetService.confirm(request.token(), request.password());
+    }
+
     /**
-     * Slows down password guessing and mass sign-ups. Counted per client
-     * address across both endpoints, before any password hashing happens.
+     * Slows down password guessing, mass sign-ups and guessing of reset tokens.
+     * Counted per client address across all four endpoints, before any password
+     * hashing happens.
      */
     private void throttle(HttpServletRequest httpRequest)
     {

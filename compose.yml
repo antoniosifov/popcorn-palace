@@ -94,6 +94,8 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
       LOG_FORMAT: ${LOG_FORMAT:-}
+      # The site as a customer reaches it: links in emails (a password reset) point there.
+      SITE_URL: ${SITE_URL:-http://localhost:${WEB_PORT:-3000}}
       # Customers reach the API through the web client, so the address that login
       # attempts are counted by comes from the X-Forwarded-For header it sends.
       FORWARD_HEADERS_STRATEGY: native

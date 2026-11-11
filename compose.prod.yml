@@ -63,6 +63,8 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:?set ADMIN_EMAIL in .env}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
       CORS_ALLOWED_ORIGIN_PATTERNS: https://${SITE_HOST}
+      # Links in emails (a password reset) point at the site as the world sees it.
+      SITE_URL: https://${SITE_HOST}
       JAVA_TOOL_OPTIONS: -Xmx400m
     ports: !reset []
 

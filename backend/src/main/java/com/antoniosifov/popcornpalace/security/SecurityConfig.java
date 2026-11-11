@@ -22,7 +22,7 @@ import java.util.List;
  * Who may call what:
  *
  * <ul>
- *   <li>anyone: register, log in, browse movies, halls, showtimes and seat maps, read the API docs;</li>
+ *   <li>anyone: register, log in, ask for and use a password reset link, browse movies, halls, showtimes and seat maps, read the API docs;</li>
  *   <li>administrators only: create, change or delete movies, halls and showtimes;</li>
  *   <li>any logged-in account: everything else (holding seats, bookings, own profile).</li>
  * </ul>
@@ -51,6 +51,8 @@ public class SecurityConfig
                 .cors(Customizer.withDefaults())
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/register", "/api/v1/auth/login").permitAll()
+                        // Whoever forgot their password cannot be asked to log in first.
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/password-reset", "/api/v1/auth/password-reset/confirm").permitAll()
                         .requestMatchers(API_DOCS).permitAll()
                         .requestMatchers(MANAGEMENT).permitAll()
                         // Must come before the catalog rules below: the first matching rule wins.

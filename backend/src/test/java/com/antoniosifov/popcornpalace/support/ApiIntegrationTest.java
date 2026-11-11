@@ -120,9 +120,9 @@ public abstract class ApiIntegrationTest
         insertUser(ADMIN_ID, "admin@test.local", "Admin", Role.ADMIN);
         insertUser(CUSTOMER_ID, "customer@test.local", "Customer", Role.CUSTOMER);
         insertUser(OTHER_CUSTOMER_ID, "other@test.local", "Other customer", Role.CUSTOMER);
-        adminToken = tokenService.issue(ADMIN_ID, Role.ADMIN).value();
-        customerToken = tokenService.issue(CUSTOMER_ID, Role.CUSTOMER).value();
-        otherCustomerToken = tokenService.issue(OTHER_CUSTOMER_ID, Role.CUSTOMER).value();
+        adminToken = tokenService.issue(ADMIN_ID, Role.ADMIN, 0).value();
+        customerToken = tokenService.issue(CUSTOMER_ID, Role.CUSTOMER, 0).value();
+        otherCustomerToken = tokenService.issue(OTHER_CUSTOMER_ID, Role.CUSTOMER, 0).value();
 
         // A real server adds these filters by itself; MockMvc only adds what it is told to.
         Filter[] filters = {observationFilter(), traceIdFilter};
