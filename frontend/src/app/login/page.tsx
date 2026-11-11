@@ -25,11 +25,13 @@ export default function LoginPage({ searchParams }: PageProps<"/login">) {
 }
 
 async function Form({ searchParams }: Pick<PageProps<"/login">, "searchParams">) {
-  const { next } = await searchParams;
+  const { next, reset } = await searchParams;
   const destination = safeNextPath(typeof next === "string" ? next : undefined);
   // Somebody who is logged in already has nothing to do here.
   if (await currentUser()) {
     redirect(destination);
   }
-  return <AuthForm mode="login" next={destination} />;
+  // Arriving from the page that set a new password.
+  const notice = reset === "done" ? "Your password has been changed. Log in with the new one." : undefined;
+  return <AuthForm mode="login" next={destination} notice={notice} />;
 }
