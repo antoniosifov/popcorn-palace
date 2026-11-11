@@ -12,6 +12,7 @@ A movie ticket booking backend built with Java 21 and Spring Boot 4. It manages 
 - A catalogue that can keep itself current: with a TMDB key, the films in cinemas now are imported with their posters, stills, trailers and credits, and read again twice a day
 - Accounts with stateless JWT authentication and two roles: customers book, administrators manage the catalog
 - A forgotten password is replaced through a one-time link sent by email, and the change ends the account's earlier sessions
+- Signing in with Google, with the ID token checked in full here and an account that somebody else opened first never handed over with its password
 - Checkout with temporary seat holds in Redis (atomic Lua scripts, automatic expiry) confirmed into bookings in PostgreSQL
 - Payments that are safe to retry: idempotency keys, a refund if the booking fails after the charge, and a job that settles payments left unfinished
 - Cancellation with refund; the seats go back on sale while the booking stays on record
@@ -22,7 +23,7 @@ A movie ticket booking backend built with Java 21 and Spring Boot 4. It manages 
 - Business rules enforced by database constraints, so they hold under concurrency
 - Uniform error responses in the RFC 9457 "problem details" format with machine-readable codes
 - Observability built in: health probes, Prometheus metrics for the business (holds, bookings, payments, outbox backlog, open seat maps) as well as the runtime, and one OpenTelemetry trace from the booking request through the outbox and Kafka to the ticket email, with the trace id in every response
-- 250 automated tests, most of them calling the API over HTTP against real PostgreSQL, Redis and Kafka
+- 263 automated tests, most of them calling the API over HTTP against real PostgreSQL, Redis and Kafka
 
 ## Architecture
 
@@ -90,6 +91,7 @@ Base URL: `http://localhost:8080/api/v1`. Interactive documentation: http://loca
 | `POST` | `/auth/login` | Log in, returns a token | anyone | `200` |
 | `POST` | `/auth/password-reset` | Ask for a link to set a new password; the answer is the same whether or not the email has an account | anyone | `202` |
 | `POST` | `/auth/password-reset/confirm` | Set a new password with the token from the emailed link | anyone | `204` |
+| `POST` | `/auth/google` | Sign in with a Google ID token, returns a token | anyone | `200` |
 | `GET` | `/users/me` | The account that owns the token | logged in | `200` |
 | `GET` | `/movies` | List movies (paginated) | anyone | `200` |
 | `GET` | `/movies/{id}` | Get a movie | anyone | `200` |
@@ -171,6 +173,19 @@ Not implemented yet: refresh tokens.
 - **The link passes through the outbox and Kafka and is kept in neither.** The email is sent the way tickets are, so it exists if and only if the request committed. But published outbox rows are normally kept for a week and Kafka keeps messages for as long: too long for a secret. The event is written as confidential (`Outbox.appendConfidential`) and deleted the moment Kafka acknowledges it, its topic keeps messages for an hour, and the notifications service neither logs the link nor parks a failed event in a dead-letter topic.
 
 What is left: a request for a registered email does two inserts more than one for an unknown email, so the two differ by a hair in response time, though not in what they answer.
+
+### Signing in with Google
+
+`POST /auth/google` with the ID token Google issued and the nonce the sign-in was started with. The [web client](../frontend/README.md#signing-in-with-google) does the round trip to Google; this is where the result is judged and where accounts are opened, so nothing about the token is taken on trust.
+
+- **The token is checked in full** (`GoogleIdTokenVerifier`): its signature against the keys Google publishes (fetched on first use and cached), the issuer, the expiry, the nonce, and the audience. The audience is the one that is easy to forget: without it, a token Google issued when the person signed in to any other site would open their account here.
+- **An account is found by Google's subject, not by email.** The subject stays the same when somebody changes their address at Google; the email does not.
+- **An address Google has not confirmed opens nothing** (`401 GOOGLE_EMAIL_UNVERIFIED`): it proves nothing about who is signing in.
+- **An account that already uses the email is connected, and what happens to its password depends on whether its email was ever proven.** Registration with a password asks for no proof, so an account with somebody's email may have been opened by somebody else, on purpose, ahead of them. Joining it to the rightful owner's Google sign-in as it is would leave the stranger a working password to the owner's account. So `users.email_verified` records whether the email was proven (by opening a reset link, or by an earlier Google sign-in). A proven account keeps its password. An unproven one loses its password and its sessions the moment Google vouches for the owner; a password can be set again through a reset link.
+- **An account opened through Google has no password**, and none matches: logging in to it with one fails like any wrong password.
+- **Off unless configured.** Without `GOOGLE_CLIENT_ID` the endpoint answers `404 GOOGLE_SIGN_IN_DISABLED`, and the application never contacts Google.
+
+`GoogleSignInApiTest` runs against a stand-in that publishes signing keys over HTTP the way Google does, so the tokens in the tests are verified by the same code path as real ones: a forged signature, another site's audience, another issuer, an expired token and a nonce from another sign-in are all refused, with one answer that does not say which check failed.
 
 ### Request bodies
 
@@ -404,11 +419,14 @@ Validation failures list every rejected field:
 | `400` | `SHOWTIME_PRICE_MISSING` | No price for a seat category the hall uses |
 | `400` | `SEAT_NOT_IN_HALL` | Holding a seat that is not in the showtime's hall |
 | `400` | `TOO_MANY_SEATS` | Holding more than eight seats at once |
-| `401` | `UNAUTHENTICATED` | No access token, or one that is invalid or expired (with a `WWW-Authenticate: Bearer` header) |
 | `400` | `RESET_LINK_INVALID` | A password reset token that is unknown, expired, replaced by a newer one or already used |
+| `401` | `UNAUTHENTICATED` | No access token, or one that is invalid or expired (with a `WWW-Authenticate: Bearer` header) |
 | `401` | `INVALID_CREDENTIALS` | Login with an unknown email or a wrong password |
+| `401` | `GOOGLE_SIGN_IN_FAILED` | A Google ID token that fails any check: signature, issuer, audience, expiry or nonce |
+| `401` | `GOOGLE_EMAIL_UNVERIFIED` | A Google account whose email Google has not confirmed |
 | `402` | `PAYMENT_DECLINED` | The card was declined (reason in `declineCode`); the seats stay held |
 | `403` | `FORBIDDEN` | The account's role does not allow the action |
+| `404` | `GOOGLE_SIGN_IN_DISABLED` | Signing in with Google where no client id is configured |
 | `404` | `MOVIE_NOT_FOUND`, `HALL_NOT_FOUND`, `SHOWTIME_NOT_FOUND`, `SEAT_NOT_FOUND`, `BOOKING_NOT_FOUND` | The resource does not exist |
 | `404` | `HOLD_NOT_FOUND` | The hold does not exist, has expired, or belongs to someone else |
 | `409` | `EMAIL_TAKEN`, `MOVIE_TITLE_TAKEN`, `HALL_NAME_TAKEN` | The email or name is already in use |
@@ -739,6 +757,7 @@ Every log line names the application, trace and span (`[popcorn-palace,4bf92f35�
 | `V7` | The outbox row carries the trace context of the request that wrote it |
 | `V8` | How a movie is presented (description, tagline, poster, still, trailer, director, cast) and where it came from (`tmdb_id`, popularity, whether it is in cinemas) |
 | `V9` | A forgotten password: hashed, expiring reset tokens (one per account); a session version on every account, raised when the password changes; outbox events that are deleted as soon as they are published |
+| `V10` | Signing in with Google: the Google subject an account is connected to, and whether the account's email was ever proven |
 
 `V2` migrates existing data instead of dropping it: each distinct theater name becomes a hall with 15 × 20 seats (the first API accepted seat numbers 1–300), the old showtime price becomes its standard price, and each booking is pointed at its seat and keeps the price it was sold for. `V3` gives the user ids carried by older bookings placeholder accounts that cannot be logged into, so the new foreign key holds. `V4` turns each existing single-seat booking into an order with one seat row. `SchemaMigrationTest` builds a database at `V1`, fills it, migrates to the latest version and checks the result.
 
@@ -808,6 +827,7 @@ Windows:
 | `JWT_TTL` | Lifetime of an access token (ISO-8601 duration) | `PT1H` |
 | `SITE_URL` | The address customers reach the site at; links in emails are built from it | `http://localhost:3000` |
 | `PASSWORD_RESET_TTL` | How long a password reset link works (ISO-8601 duration) | `PT30M` |
+| `GOOGLE_CLIENT_ID` | The OAuth client people sign in with; an ID token is accepted only if Google issued it for this id. Empty switches signing in with Google off | empty |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Administrator created at startup if missing | none outside compose |
 | `CORS_ALLOWED_ORIGIN_PATTERNS` | Browser origins allowed to call the API | any `localhost` port |
 | `MANAGEMENT_PORT` | Health, info and metrics; keep it inside the network | `8081` |
@@ -832,4 +852,4 @@ Windows:
 
 Docker must be running: the API tests start disposable PostgreSQL, Redis and Kafka containers through Testcontainers and call the application over HTTP, so they exercise JSON mapping, validation, security, transactions, migrations, constraints, the Redis scripts, the outbox, the live seat map and the management endpoints together. Rules that need no database (text normalization, request validation, sort allow-list) have plain unit tests.
 
-Current suite: **250 tests passing**. The notifications service has its own suite, see its [README](../notifications/README.md).
+Current suite: **263 tests passing**. The notifications service has its own suite, see its [README](../notifications/README.md).

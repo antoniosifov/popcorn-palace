@@ -62,7 +62,7 @@ git clone https://github.com/antoniosifov/popcorn-palace /opt/popcorn-palace
 
 [`bootstrap.sh`](bootstrap.sh) installs Docker from Docker's own repository, limits container logs, adds 2 GB of swap, closes every port but SSH, 80 and 443, creates the `deploy` account that releases are made from, and writes `/opt/popcorn-palace/.env` from [`.env.example`](.env.example) with freshly made secrets (the database password, the key that signs sessions, the administrator's and Grafana's passwords).
 
-**3. Settings.** Fill in the rest of `.env` on the server: the four names, `ADMIN_EMAIL`, the mail service (`MAIL_PASSWORD`, `MAIL_FROM`) and, for a programme of films that are in cinemas now, `TMDB_API_KEY`.
+**3. Settings.** Fill in the rest of `.env` on the server: the four names, `ADMIN_EMAIL`, the mail service (`MAIL_PASSWORD`, `MAIL_FROM`) and, for a programme of films that are in cinemas now, `TMDB_API_KEY`. For "Continue with Google", also `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` of an OAuth client whose authorised redirect URI is `https://<SITE_HOST>/api/auth/google/callback`.
 
 **4. The images.** The first run of the Deploy workflow creates three packages in the registry. They start out private: make each one public (GitHub > the package > Package settings > Change visibility), or log the server in with a token that may read them.
 
