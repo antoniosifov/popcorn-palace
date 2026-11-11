@@ -94,6 +94,8 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
       LOG_FORMAT: ${LOG_FORMAT:-}
+      # Signing in with Google: the client id ID tokens must have been issued for. Empty: off.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       # The site as a customer reaches it: links in emails (a password reset) point there.
       SITE_URL: ${SITE_URL:-http://localhost:${WEB_PORT:-3000}}
       # Customers reach the API through the web client, so the address that login
@@ -135,6 +137,9 @@ services:
       API_URL: http://api:8080
       CINEMA_TIME_ZONE: ${CINEMA_TIME_ZONE:-UTC}
       CURRENCY: ${PAYMENT_CURRENCY:-USD}
+      # Signing in with Google (see .env.example). Both empty: the button is not offered.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       # This stack is served over plain HTTP. Behind HTTPS, remove this line and
       # the session cookie is sent over HTTPS only.
       SESSION_COOKIE_SECURE: "false"

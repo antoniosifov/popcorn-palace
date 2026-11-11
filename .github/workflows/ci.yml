@@ -127,6 +127,7 @@ jobs:
           MAIL_FROM: Popcorn Palace <tickets@example.com>
         run: |
           docker compose -f compose.yml -f compose.prod.yml config --quiet
+          docker compose -f compose.yml -f compose.e2e.yml config --quiet
           docker run --rm -e SITE_HOST -e API_HOST -e GRAFANA_HOST -e TRACES_HOST \
             -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" \
             caddy:2.11-alpine caddy validate --config /etc/caddy/Caddyfile
@@ -153,8 +154,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # With a stand-in for Google next to it, so that signing in with Google is tested too.
       - name: Start the stack
-        run: docker compose up -d --build --wait
+        run: docker compose -f compose.yml -f compose.e2e.yml up -d --build --wait
         env:
           # Every test registers its own customers, all from this one address.
           AUTH_RATE_LIMIT: 1000
@@ -176,10 +178,11 @@ jobs:
         run: npm run e2e
         env:
           PLAYWRIGHT_CHANNEL: chrome
+          E2E_FAKE_GOOGLE_URL: http://localhost:9955
 
       - name: Logs of the stack
         if: failure()
-        run: docker compose logs --no-color --tail=300 web api notifications
+        run: docker compose -f compose.yml -f compose.e2e.yml logs --no-color --tail=300 web api notifications fake-google
 
       - name: Keep the report
         if: failure()

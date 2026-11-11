@@ -1,0 +1,46 @@
+# For the end-to-end tests of signing in with Google, laid over compose.yml:
+#
+#   docker compose -f compose.yml -f compose.e2e.yml up -d --build --wait
+#   E2E_FAKE_GOOGLE_URL=http://localhost:9955 npm run e2e      (in frontend/)
+#
+# Google itself cannot be part of a test, so a stand-in is: it sends the
+# browser back with a code, exchanges the code for a signed ID token and
+# publishes the keys it signs with, and is as strict as Google about what it is
+# sent (frontend/e2e/fake-google.mjs). The web client and the API are pointed at
+# it and otherwise run exactly as they do for real.
+services:
+  fake-google:
+    image: node:22-alpine
+    restart: unless-stopped
+    command: ["node", "/fake-google.mjs"]
+    environment:
+      PORT: 9955
+      CLIENT_ID: popcorn-e2e.apps.googleusercontent.com
+      CLIENT_SECRET: e2e-client-secret
+      REDIRECT_URIS: http://localhost:${WEB_PORT:-3000}/api/auth/google/callback
+    volumes:
+      - ./frontend/e2e/fake-google.mjs:/fake-google.mjs:ro
+    ports:
+      # The browser of the tests is sent here to "sign in".
+      - "${FAKE_GOOGLE_PORT:-9955}:9955"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9955/health"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+
+  api:
+    depends_on:
+      fake-google:
+        condition: service_healthy
+    environment:
+      GOOGLE_CLIENT_ID: popcorn-e2e.apps.googleusercontent.com
+      GOOGLE_JWK_SET_URI: http://fake-google:9955/certs
+
+  web:
+    environment:
+      GOOGLE_CLIENT_ID: popcorn-e2e.apps.googleusercontent.com
+      GOOGLE_CLIENT_SECRET: e2e-client-secret
+      # Where the browser goes (from outside the stack) and where this server goes (inside it).
+      GOOGLE_AUTH_URL: http://localhost:${FAKE_GOOGLE_PORT:-9955}/auth
+      GOOGLE_TOKEN_URL: http://fake-google:9955/token
