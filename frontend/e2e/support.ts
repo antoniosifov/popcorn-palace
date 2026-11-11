@@ -118,3 +118,29 @@ export async function emailTo(address: string, subject: RegExp): Promise<string>
     .not.toBe("");
   return found;
 }
+
+/**
+ * Waits for an email to the address with a link in it and returns the newest
+ * such link. The link is read from the text of the email, the way its reader gets it.
+ */
+export async function linkInEmailTo(address: string, subject: RegExp): Promise<string> {
+  let link = "";
+  await expect
+    .poll(
+      async () => {
+        const search = await fetch(`${MAILPIT_URL}/api/v1/search?query=${encodeURIComponent(`to:${address}`)}`);
+        const result = (await search.json()) as MailpitSearch;
+        // The mail catcher lists the newest message first.
+        const message = result.messages.find((candidate) => subject.test(candidate.Subject));
+        if (!message) {
+          return "";
+        }
+        const email = (await (await fetch(`${MAILPIT_URL}/api/v1/message/${message.ID}`)).json()) as { Text: string };
+        link = /https?:\/\/\S+/.exec(email.Text)?.[0] ?? "";
+        return link;
+      },
+      { timeout: 30_000, message: `an email matching ${subject} with a link, to ${address}` },
+    )
+    .not.toBe("");
+  return link;
+}

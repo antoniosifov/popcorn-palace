@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
@@ -20,7 +21,9 @@ import java.security.SecureRandom;
 /**
  * The application signs its own access tokens (HS256) and verifies them on
  * every request. There is no session and no token table: a request is
- * authenticated by the signature, issuer and expiry of the token it carries.
+ * authenticated by the signature, issuer and expiry of the token it carries,
+ * and by the token not being older than the account's last change of password
+ * (see {@link SessionVersions}).
  */
 @Configuration
 class JwtConfig
@@ -59,13 +62,15 @@ class JwtConfig
     }
 
     @Bean
-    JwtDecoder jwtDecoder(SecretKey jwtSigningKey, SecurityProperties properties)
+    JwtDecoder jwtDecoder(SecretKey jwtSigningKey, SecurityProperties properties, SessionVersions sessionVersions)
     {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(jwtSigningKey)
                 .macAlgorithm(MacAlgorithm.HS256)
                 .build();
-        // Checks expiry and not-before, and that the token was issued by this application.
-        decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(properties.jwt().issuer()));
+        // Checks expiry and not-before, that the token was issued by this application,
+        // and that the account's password has not been changed since.
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                JwtValidators.createDefaultWithIssuer(properties.jwt().issuer()), sessionVersions));
         return decoder;
     }
 }

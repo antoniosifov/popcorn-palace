@@ -54,11 +54,28 @@ public class Outbox
     @Transactional(propagation = Propagation.MANDATORY)
     public void append(String topic, String key, String eventType, UUID eventId, Object payload)
     {
+        insert(topic, key, eventType, eventId, payload, false);
+    }
+
+    /**
+     * The same, for an event that carries a secret, such as a link that lets its
+     * holder into an account. Published events are normally kept for a while for
+     * troubleshooting; this one is deleted as soon as Kafka has acknowledged it,
+     * so the secret does not sit in the database longer than it takes to send.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void appendConfidential(String topic, String key, String eventType, UUID eventId, Object payload)
+    {
+        insert(topic, key, eventType, eventId, payload, true);
+    }
+
+    private void insert(String topic, String key, String eventType, UUID eventId, Object payload, boolean confidential)
+    {
         jdbc.update("""
-                        INSERT INTO outbox_events (event_id, topic, message_key, event_type, payload, created_at, trace_parent)
-                        VALUES (?, ?, ?, ?, ?::json, ?, ?)""",
+                        INSERT INTO outbox_events (event_id, topic, message_key, event_type, payload, created_at, trace_parent, confidential)
+                        VALUES (?, ?, ?, ?, ?::json, ?, ?, ?)""",
                 eventId, topic, key, eventType, jsonMapper.writeValueAsString(payload),
-                Timestamp.from(clock.instant().truncatedTo(ChronoUnit.MILLIS)), traceParent());
+                Timestamp.from(clock.instant().truncatedTo(ChronoUnit.MILLIS)), traceParent(), confidential);
     }
 
     /**

@@ -32,6 +32,7 @@ const MESSAGES: Record<string, string> = {
   FORBIDDEN: "Your account is not allowed to do this.",
   INVALID_CREDENTIALS: "The email or the password is not right.",
   EMAIL_TAKEN: "An account with this email already exists. Log in instead.",
+  RESET_LINK_INVALID: "This link has expired or has already been used.",
   TOO_MANY_REQUESTS: "Too many attempts. Wait a minute and try again.",
   VALIDATION_FAILED: "Some fields need another look.",
   SEAT_ALREADY_HELD: "Somebody else is booking some of these seats right now. Pick other seats.",

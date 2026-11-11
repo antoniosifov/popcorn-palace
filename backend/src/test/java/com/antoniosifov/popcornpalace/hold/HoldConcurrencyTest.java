@@ -39,7 +39,7 @@ class HoldConcurrencyTest extends ApiIntegrationTest
         for (int i = 0; i < CUSTOMERS; i++) {
             UUID id = UUID.randomUUID();
             insertUser(id, "racer" + i + "@test.local", "Racer " + i, Role.CUSTOMER);
-            customerTokens.add(tokenService.issue(id, Role.CUSTOMER).value());
+            customerTokens.add(tokenService.issue(id, Role.CUSTOMER, 0).value());
         }
     }
 

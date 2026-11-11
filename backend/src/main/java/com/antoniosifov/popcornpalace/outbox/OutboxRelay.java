@@ -145,6 +145,8 @@ public class OutboxRelay
                         statement.setTimestamp(1, now);
                         statement.setLong(2, event.id());
                     });
+            // What carried a secret is not kept once it has been delivered (see Outbox.appendConfidential).
+            jdbc.update("DELETE FROM outbox_events WHERE confidential AND published_at IS NOT NULL");
             metrics.published(batch.size());
             return batch.size();
         });

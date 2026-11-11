@@ -123,6 +123,7 @@ The parts that took thought, and where each is explained and tested.
 | One request across two services and a queue | A trace that survives the outbox: the row stores the request's trace context and the relay continues it | [Traces](backend/README.md#traces) |
 | A cinema has one clock | Showtimes are stored as instants and shown and entered on the cinema's clock, including the nights the clocks change | [Time](frontend/README.md#time) |
 | The same stack on a laptop and on a server | One compose file with a production layer over it: images tagged by commit, nothing reachable but the web server, secrets without defaults, and a release that is one script run by a key that can do nothing else | [Running it on a server](deploy/README.md) |
+| A secret that has to travel through an event | A password reset link goes out the way tickets do, through the outbox and Kafka, but is kept in neither: only its hash is stored, the outbox row is deleted on delivery, the topic keeps an hour, and a failed event is dropped instead of parked. The new password ends the sessions that were open | [A forgotten password](backend/README.md#a-forgotten-password) |
 | Rules that hold when the code is wrong | Constraints in the database, not only checks in the services, and Flyway migrations that own the schema | [Business rules](backend/README.md#business-rules-and-where-they-are-enforced) |
 
 ## Watching it work
@@ -152,10 +153,10 @@ Every API response carries the trace id in its `X-Trace-Id` header, and the web 
 
 | Suite | Count | What it runs against |
 | --- | --- | --- |
-| API | 233 | The application over HTTP with real PostgreSQL, Redis and Kafka (Testcontainers) |
-| Notifications service | 10 | Real Kafka and Redis, an in-memory mail server |
+| API | 250 | The application over HTTP with real PostgreSQL, Redis and Kafka (Testcontainers) |
+| Notifications service | 14 | Real Kafka and Redis, an in-memory mail server |
 | Web client, unit and component | 104 | The rules of the seat map, the checkout, time zones, pictures and errors, without a browser |
-| End to end | 13 | A real browser against the whole stack: a booking has to arrive as an email |
+| End to end | 17 | A real browser against the whole stack: a booking has to arrive as an email |
 
 All of it runs in CI on every pull request. The end-to-end job starts the stack with `docker compose`, the same way the section above does.
 

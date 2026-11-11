@@ -3,6 +3,7 @@ package com.antoniosifov.popcornpalace.notifications;
 import com.icegreen.greenmail.junit5.GreenMailExtension;
 import com.icegreen.greenmail.util.GreenMailUtil;
 import com.icegreen.greenmail.util.ServerSetupTest;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.mail.internet.MimeMessage;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -29,10 +30,15 @@ import org.testcontainers.kafka.KafkaContainer;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -58,6 +64,8 @@ class NotificationFlowTest
 {
     private static final String TOPIC = "popcorn.booking-events";
     private static final String DEAD_LETTER_TOPIC = TOPIC + ".DLT";
+    private static final String ACCOUNT_TOPIC = "popcorn.account-events";
+    private static final String RESET_LINK = "https://popcorn.example.com/reset-password?token=";
     private static final Duration PATIENCE = Duration.ofSeconds(30);
 
     /** An in-memory mail server on port 3025 that keeps what it receives. */
@@ -72,6 +80,8 @@ class NotificationFlowTest
     private KafkaContainer kafkaContainer;
     @Autowired
     private WebApplicationContext context;
+    @Autowired
+    private MeterRegistry meters;
 
     @BeforeEach
     void startClean() throws Exception
@@ -225,7 +235,88 @@ class NotificationFlowTest
         }
 
         MimeMessage email = awaitEmails(1).get(0);
-        assertThat(email.getHeader(TicketMailer.TRACE_HEADER)).containsExactly(traceId);
+        assertThat(email.getHeader(Mail.TRACE_HEADER)).containsExactly(traceId);
+    }
+
+    // ------------------------------------------------------------ account events
+
+    @DisplayName("A password reset event produces an email with the link and the moment it stops working")
+    @Test
+    void sendsThePasswordResetLink() throws Exception
+    {
+        String link = RESET_LINK + "k3Jd-9a_Zq";
+        Instant expiresAt = Instant.now().plus(Duration.ofMinutes(30));
+
+        publishAccountEvent(UUID.randomUUID(), "anna@example.com", link, expiresAt);
+
+        MimeMessage email = awaitEmails(1).get(0);
+        assertThat(email.getAllRecipients()[0]).hasToString("anna@example.com");
+        assertThat(email.getSubject()).isEqualTo("Set a new password for Popcorn Palace");
+        String until = DateTimeFormatter.ofPattern("HH:mm 'on' d MMMM", Locale.ENGLISH).format(expiresAt.atZone(ZoneOffset.UTC));
+        assertThat(GreenMailUtil.getBody(email))
+                .contains("Hi Anna,")
+                // On a line of its own, whole: a mail program must be able to make it a link.
+                .containsPattern("(?m)^" + Pattern.quote(link) + "\\s*$")
+                .contains("The link works once, until " + until + " (UTC).")
+                .contains("If it was not you, there is nothing to do");
+    }
+
+    @DisplayName("The same reset event delivered twice sends one email")
+    @Test
+    void ignoresARedeliveredResetEvent() throws Exception
+    {
+        UUID eventId = UUID.randomUUID();
+        Instant expiresAt = Instant.now().plus(Duration.ofMinutes(30));
+
+        publishAccountEvent(eventId, "anna@example.com", RESET_LINK + "first", expiresAt);
+        publishAccountEvent(eventId, "anna@example.com", RESET_LINK + "first", expiresAt);
+        // The topic has one partition, so this one is read after both of the above.
+        publishAccountEvent(UUID.randomUUID(), "marker@example.com", RESET_LINK + "marker", expiresAt);
+
+        assertThat(awaitEmails(2)).extracting(email -> email.getAllRecipients()[0].toString())
+                .containsExactlyInAnyOrder("anna@example.com", "marker@example.com");
+    }
+
+    @DisplayName("A link that expired on its way here is not sent")
+    @Test
+    void doesNotSendAnExpiredLink() throws Exception
+    {
+        Instant soon = Instant.now().plus(Duration.ofMinutes(30));
+
+        publishAccountEvent(UUID.randomUUID(), "late@example.com", RESET_LINK + "late", Instant.now().minusSeconds(1));
+        publishAccountEvent(UUID.randomUUID(), "marker@example.com", RESET_LINK + "marker", soon);
+
+        assertThat(awaitEmails(1).get(0).getAllRecipients()[0]).hasToString("marker@example.com");
+    }
+
+    @DisplayName("A reset event that cannot become an email is dropped, not parked: its link is in no dead-letter topic")
+    @Test
+    void dropsAResetEventInsteadOfParkingIt() throws Exception
+    {
+        Instant soon = Instant.now().plus(Duration.ofMinutes(30));
+        UUID undelivered = UUID.randomUUID();
+        double droppedBefore = dropped();
+
+        mailServer.stop();
+        try {
+            publishAccountEvent(undelivered, "anna@example.com", RESET_LINK + "secret-token", soon);
+            kafka.send(ACCOUNT_TOPIC, "broken", "this is not json, and says secret-token").get();
+
+            // Retried, then given up on: both of them.
+            await().atMost(PATIENCE).untilAsserted(() -> assertThat(dropped() - droppedBefore).isEqualTo(2));
+        }
+        finally {
+            mailServer.start();
+        }
+
+        // Nothing was copied anywhere: not to a dead-letter topic of its own, not to the bookings' one.
+        assertThat(readFrom(ACCOUNT_TOPIC + ".DLT", undelivered.toString(), Duration.ofSeconds(3))).isEmpty();
+        assertThat(readFrom(ACCOUNT_TOPIC + ".DLT", "broken", Duration.ofSeconds(1))).isEmpty();
+        assertThat(readDeadLetters(undelivered.toString(), Duration.ofSeconds(1))).isEmpty();
+        // Not recorded as handled either, and the events behind it are read as usual.
+        assertThat(redis.hasKey("notifications:processed:" + undelivered)).isFalse();
+        publishAccountEvent(UUID.randomUUID(), "marker@example.com", RESET_LINK + "marker", soon);
+        assertThat(awaitEmails(1).get(0).getAllRecipients()[0]).hasToString("marker@example.com");
     }
 
     @DisplayName("Health and metrics are served over HTTP, for the stack to watch")
@@ -249,6 +340,7 @@ class NotificationFlowTest
                 .contains("application=\"popcorn-palace-notifications\"")
                 .contains("popcorn_notifications_emails_total{")
                 .contains("popcorn_notifications_dead_letters_total")
+                .contains("popcorn_notifications_dropped_total")
                 // The Kafka client's own metrics, labelled like everything else.
                 .contains("kafka_consumer_connection_count{application=\"popcorn-palace-notifications\",");
     }
@@ -262,6 +354,28 @@ class NotificationFlowTest
         properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         return properties;
+    }
+
+    /** An account event as the booking API publishes it, keyed by account like the real ones. */
+    private void publishAccountEvent(UUID eventId, String email, String link, Instant expiresAt) throws Exception
+    {
+        UUID accountId = UUID.randomUUID();
+        kafka.send(ACCOUNT_TOPIC, eventId.toString(), """
+                {
+                  "eventId": "%s",
+                  "type": "PasswordResetRequested",
+                  "version": 1,
+                  "occurredAt": "%s",
+                  "account": {"id": "%s", "email": "%s", "displayName": "Anna"},
+                  "passwordReset": {"url": "%s", "expiresAt": "%s"},
+                  "somethingAddedLater": {"ignored": true}
+                }
+                """.formatted(eventId, Instant.now(), accountId, email, link, expiresAt)).get();
+    }
+
+    private double dropped()
+    {
+        return meters.get("popcorn.notifications.dropped").counter().count();
     }
 
     private void publish(UUID bookingId, String eventJson) throws Exception
@@ -318,6 +432,11 @@ class NotificationFlowTest
     /** Reads the dead-letter topic from the start and returns the messages with the given key. */
     private List<ConsumerRecord<String, String>> readDeadLetters(String key, Duration timeout)
     {
+        return readFrom(DEAD_LETTER_TOPIC, key, timeout);
+    }
+
+    private List<ConsumerRecord<String, String>> readFrom(String topic, String key, Duration timeout)
+    {
         Properties properties = new Properties();
         properties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaContainer.getBootstrapServers());
         properties.put(ConsumerConfig.GROUP_ID_CONFIG, "test-" + UUID.randomUUID());
@@ -329,7 +448,7 @@ class NotificationFlowTest
         List<ConsumerRecord<String, String>> found = new ArrayList<>();
         long deadline = System.nanoTime() + timeout.toNanos();
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(properties)) {
-            consumer.subscribe(List.of(DEAD_LETTER_TOPIC));
+            consumer.subscribe(List.of(topic));
             while (found.isEmpty() && System.nanoTime() < deadline) {
                 for (ConsumerRecord<String, String> message : consumer.poll(Duration.ofMillis(250))) {
                     if (key.equals(message.key())) {

@@ -62,6 +62,53 @@ export async function register(_previous: AuthFormState, form: FormData): Promis
   redirect(safeNextPath(text(form, "next")));
 }
 
+/** What the form that asks for a reset link gets back. */
+export type ResetRequestState = {
+  error?: ActionError;
+  /** The email the link was asked for, once the API has taken the request. */
+  sentTo?: string;
+  values?: { email?: string };
+};
+
+/**
+ * Asks for a link to set a new password. The API answers the same whether or
+ * not the email has an account, and so does this: success only means the
+ * request was taken.
+ */
+export async function requestPasswordReset(_previous: ResetRequestState, form: FormData): Promise<ResetRequestState> {
+  const email = text(form, "email");
+  try {
+    await api<void>("/auth/password-reset", {
+      method: "POST",
+      body: { email },
+      headers: await forwardedFor(),
+    });
+  } catch (error) {
+    return { error: await describeFailure(error), values: { email } };
+  }
+  return { sentTo: email };
+}
+
+/** What the form that sets the new password gets back when it did not work. */
+export type NewPasswordState = { error?: ActionError };
+
+export async function setNewPassword(_previous: NewPasswordState, form: FormData): Promise<NewPasswordState> {
+  const token = text(form, "token");
+  const password = String(form.get("password") ?? "");
+  try {
+    await api<void>("/auth/password-reset/confirm", {
+      method: "POST",
+      body: { token, password },
+      headers: await forwardedFor(),
+    });
+  } catch (error) {
+    return { error: await describeFailure(error) };
+  }
+  // The API has ended every session of the account; this browser's is one of them, if it had one.
+  await endSession();
+  redirect("/login?reset=done");
+}
+
 export async function logout(): Promise<void> {
   // The token is stateless: forgetting it is all there is to logging out.
   await endSession();

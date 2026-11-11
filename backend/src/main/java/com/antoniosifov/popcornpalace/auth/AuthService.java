@@ -42,11 +42,7 @@ public class AuthService
     @Transactional
     public AuthResponse register(RegisterRequest request)
     {
-        // The size limit on the request counts characters; non-ASCII ones take several bytes.
-        if (request.password().getBytes(StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES) {
-            throw ApiException.badRequest(ErrorCode.VALIDATION_FAILED,
-                    "password must be at most %d bytes when encoded as UTF-8".formatted(MAX_PASSWORD_BYTES));
-        }
+        requireUsablePassword(request.password());
         if (userRepository.existsByEmail(request.email())) {
             throw ApiException.conflict(ErrorCode.EMAIL_TAKEN, "An account with this email already exists");
         }
@@ -56,7 +52,19 @@ public class AuthService
                 request.displayName(),
                 Role.CUSTOMER,
                 clock.instant().truncatedTo(ChronoUnit.MILLIS)));
-        return AuthResponse.of(tokenService.issue(user.getId(), user.getRole()), user);
+        return AuthResponse.of(tokenService.issue(user.getId(), user.getRole(), user.getSessionVersion()), user);
+    }
+
+    /**
+     * The size limit on a request counts characters; non-ASCII ones take several
+     * bytes, and BCrypt would silently ignore everything after the 72nd.
+     */
+    static void requireUsablePassword(String password)
+    {
+        if (password.getBytes(StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES) {
+            throw ApiException.badRequest(ErrorCode.VALIDATION_FAILED,
+                    "password must be at most %d bytes when encoded as UTF-8".formatted(MAX_PASSWORD_BYTES));
+        }
     }
 
     @Transactional(readOnly = true)
@@ -74,6 +82,7 @@ public class AuthService
             // One message for both cases, for the same reason.
             throw ApiException.unauthorized(ErrorCode.INVALID_CREDENTIALS, "Email or password is incorrect");
         }
-        return AuthResponse.of(tokenService.issue(user.get().getId(), user.get().getRole()), user.get());
+        User account = user.get();
+        return AuthResponse.of(tokenService.issue(account.getId(), account.getRole(), account.getSessionVersion()), account);
     }
 }

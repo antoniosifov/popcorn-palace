@@ -16,6 +16,7 @@ The part of Popcorn Palace a customer opens in a browser: the programme, a live 
 - Every error says what happened in the customer's words and carries the trace id of the request, the one the API logs and traces by
 - A back office for administrators: movies, halls (with a preview of the layout as it is designed) and showtimes
 - Pages are prerendered shells that fill in at request time; the build needs no running API
+- A forgotten password is replaced through a link sent by email, and the change logs out every other browser
 - A shared link is previewed with a picture: the site's own card, or the still of the film the link is to
 - Unit and component tests for the rules, and end-to-end tests that drive a real browser against the whole stack, down to the ticket email
 
@@ -177,7 +178,7 @@ npm run format:check
 | The address the site gives for itself, the description in a link's preview        | [`lib/site.test.ts`](src/lib/site.test.ts)                                 |
 | The seat picker as a customer uses it, with the stream and the server replaced    | [`components/seat-booking.test.tsx`](src/components/seat-booking.test.tsx) |
 
-**End-to-end tests** (13) drive Chromium against the stack that `docker compose` starts, and run in CI on every pull request:
+**End-to-end tests** (17) drive Chromium against the stack that `docker compose` starts, and run in CI on every pull request:
 
 - a visitor opens a film's page from the programme and goes on from it to another film;
 - a customer registers, picks seats, pays, sees the ticket, and the email arrives (browser to API to Kafka to the notifications service to the mail catcher);

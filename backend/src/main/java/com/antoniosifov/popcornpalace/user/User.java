@@ -43,6 +43,10 @@ public class User
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    /** Raised when the password changes; access tokens issued for an earlier version are refused. */
+    @Column(name = "session_version", nullable = false)
+    private int sessionVersion;
+
     public User(String email, String passwordHash, String displayName, Role role, Instant createdAt)
     {
         this.email = normalizeEmail(email);
@@ -50,6 +54,18 @@ public class User
         this.displayName = displayName;
         this.role = role;
         this.createdAt = createdAt;
+    }
+
+    /**
+     * Replaces the password. Whoever was logged in with the old one is not any
+     * more: the account moves to its next session version.
+     *
+     * @param newPasswordHash a BCrypt hash, never the password itself
+     */
+    public void changePassword(String newPasswordHash)
+    {
+        this.passwordHash = newPasswordHash;
+        this.sessionVersion++;
     }
 
     /** The single definition of "the same email": trimmed and lowercased. */

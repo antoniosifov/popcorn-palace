@@ -5,13 +5,22 @@ import { useActionState } from "react";
 
 import { login, register, type AuthFormState } from "@/actions/auth";
 
-import { ErrorNotice, Field, fieldProps } from "./ui";
+import { ErrorNotice, Field, fieldProps, Notice } from "./ui";
 
 /**
  * The login and the registration form: the same fields, one more for a new
  * account. They work without JavaScript too: the form posts to a Server Action.
  */
-export function AuthForm({ mode, next }: { mode: "login" | "register"; next: string }) {
+export function AuthForm({
+  mode,
+  next,
+  notice,
+}: {
+  mode: "login" | "register";
+  next: string;
+  /** Good news from where the visitor came from, such as a password that was just changed. */
+  notice?: string;
+}) {
   const registering = mode === "register";
   const [state, action, pending] = useActionState<AuthFormState, FormData>(registering ? register : login, {});
   const errors = state.error?.fieldErrors ?? {};
@@ -20,6 +29,7 @@ export function AuthForm({ mode, next }: { mode: "login" | "register"; next: str
   return (
     <form action={action} className="grid gap-4">
       <input type="hidden" name="next" value={next} />
+      {notice && !state.error ? <Notice tone="success">{notice}</Notice> : null}
       <ErrorNotice error={state.error} />
 
       {registering ? (
@@ -65,6 +75,14 @@ export function AuthForm({ mode, next }: { mode: "login" | "register"; next: str
           required
         />
       </Field>
+
+      {registering ? null : (
+        <p className="-mt-1 justify-self-end text-label">
+          <Link href="/forgot-password" className="link-quiet">
+            Forgot your password?
+          </Link>
+        </p>
+      )}
 
       <button type="submit" className="btn btn-primary btn-large mt-1" disabled={pending}>
         {pending ? "One moment…" : registering ? "Create account" : "Log in"}
