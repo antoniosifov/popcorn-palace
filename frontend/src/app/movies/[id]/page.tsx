@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense, type CSSProperties } from "react";
@@ -5,16 +6,49 @@ import { Suspense, type CSSProperties } from "react";
 import { Poster } from "@/components/poster";
 import { displaySize, HeroStill } from "@/components/still";
 import { Trailer } from "@/components/trailer";
-import { safeLink } from "@/lib/artwork";
+import { atWidth, safeLink, safePicture } from "@/lib/artwork";
 import { getMovie, listMovies, listShowtimes } from "@/lib/api/catalog";
 import { ApiError } from "@/lib/api/client";
 import type { Movie, Showtime } from "@/lib/api/types";
 import { cinemaZone, currency } from "@/lib/config";
 import { formatMoney } from "@/lib/money";
 import { requestTime } from "@/lib/request-time";
+import { previewText } from "@/lib/site";
 import { dayKey, formatDuration, formatTime, relativeDayLabel, type DayKey } from "@/lib/time";
 
 const order = (position: number) => ({ "--order": position }) as CSSProperties;
+
+/**
+ * A link to a film is previewed as the film: its title, what it is about and
+ * its still. A film that cannot be read says nothing here; the page answers for it.
+ */
+export async function generateMetadata({ params }: PageProps<"/movies/[id]">): Promise<Metadata> {
+  const movieId = Number((await params).id);
+  if (!Number.isSafeInteger(movieId) || movieId <= 0) {
+    return {};
+  }
+  let movie: Movie;
+  try {
+    movie = await getMovie(movieId);
+  } catch {
+    return {};
+  }
+  const about = movie.overview ?? movie.tagline;
+  const description = about ? previewText(about) : undefined;
+  const still = safePicture(movie.backdropUrl);
+  const picture = still ? atWidth(still, 1280) : safePicture(movie.posterUrl);
+  return {
+    title: movie.title,
+    description,
+    openGraph: {
+      type: "video.movie",
+      siteName: "Popcorn Palace",
+      title: movie.title,
+      description,
+      ...(picture ? { images: [{ url: picture, alt: movie.title }] } : {}),
+    },
+  };
+}
 
 export default function MoviePage({ params }: PageProps<"/movies/[id]">) {
   return (
@@ -61,8 +95,6 @@ async function MovieContent({ params }: Pick<PageProps<"/movies/[id]">, "params"
 
   return (
     <>
-      <title>{`${movie.title} · Popcorn Palace`}</title>
-
       <section className={movie.backdropUrl ? "hero hero-short" : "hero hero-plain"} aria-label="The film">
         <HeroStill title={movie.title} url={movie.backdropUrl} />
         <div className="column relative pb-10 pt-40 md:pb-14">

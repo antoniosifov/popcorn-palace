@@ -72,6 +72,8 @@ services:
     environment:
       # Served over HTTPS: the session cookie never travels over plain HTTP.
       SESSION_COOKIE_SECURE: "true"
+      # The address in the preview of a shared link is this one, whatever a request claims.
+      SITE_URL: https://${SITE_HOST}
     ports: !reset []
 
   notifications:

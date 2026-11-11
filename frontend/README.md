@@ -16,6 +16,7 @@ The part of Popcorn Palace a customer opens in a browser: the programme, a live 
 - Every error says what happened in the customer's words and carries the trace id of the request, the one the API logs and traces by
 - A back office for administrators: movies, halls (with a preview of the layout as it is designed) and showtimes
 - Pages are prerendered shells that fill in at request time; the build needs no running API
+- A shared link is previewed with a picture: the site's own card, or the still of the film the link is to
 - Unit and component tests for the rules, and end-to-end tests that drive a real browser against the whole stack, down to the ticket email
 
 ## How it fits together
@@ -148,6 +149,7 @@ Open http://localhost:3000. Settings go in `.env.local`:
 | `CINEMA_TIME_ZONE`      | `UTC`                        | The IANA zone whose clock all times are shown on, for example `Europe/Berlin`                                                                  |
 | `CURRENCY`              | `USD`                        | ISO 4217 code of the prices (the API's `PAYMENT_CURRENCY`)                                                                                     |
 | `SESSION_COOKIE_SECURE` | `true` in a production build | Send the session cookie over HTTPS only. Set to `false` only where the site is served over plain HTTP on purpose, as the local Docker stack is |
+| `SITE_URL`              | the address of the request   | The address the site is reached at, for the picture a shared link is previewed with. Set on a server; elsewhere the request says it            |
 | `PORT`                  | `3000`                       | The port of the server                                                                                                                         |
 
 All of them are read by the server when a request comes in. None is compiled into the bundle, so one image runs in any environment.
@@ -162,7 +164,7 @@ npm run typecheck
 npm run format:check
 ```
 
-**Unit and component tests** (98) cover the rules without a browser or a server:
+**Unit and component tests** (104) cover the rules without a browser or a server:
 
 | What                                                                              | Where                                                                      |
 | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
@@ -172,6 +174,7 @@ npm run format:check
 | The API client: tokens, problems, an unreachable API                              | [`lib/api/client.test.ts`](src/lib/api/client.test.ts)                     |
 | Error messages, idempotency keys, safe redirects, booking status                  | [`lib/errors.test.ts`](src/lib/errors.test.ts)                             |
 | Pictures at every width, addresses that are refused, the trailer's id             | [`lib/artwork.test.ts`](src/lib/artwork.test.ts)                           |
+| The address the site gives for itself, the description in a link's preview        | [`lib/site.test.ts`](src/lib/site.test.ts)                                 |
 | The seat picker as a customer uses it, with the stream and the server replaced    | [`components/seat-booking.test.tsx`](src/components/seat-booking.test.tsx) |
 
 **End-to-end tests** (13) drive Chromium against the stack that `docker compose` starts, and run in CI on every pull request:
