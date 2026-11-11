@@ -108,6 +108,30 @@ jobs:
       - name: Validate compose file
         run: docker compose config --quiet
 
+      # The same for the stack as a server runs it: compose.yml with its production
+      # layer, the web server in front of it, and the scripts that put it there.
+      - name: Validate the production layer
+        env:
+          SITE_HOST: popcorn.example.com
+          API_HOST: api.popcorn.example.com
+          GRAFANA_HOST: grafana.popcorn.example.com
+          TRACES_HOST: traces.popcorn.example.com
+          DB_PASSWORD: not-a-secret
+          JWT_SECRET: not-a-secret-not-a-secret-not-a-secret
+          ADMIN_EMAIL: admin@example.com
+          ADMIN_PASSWORD: not-a-secret
+          GRAFANA_PASSWORD: not-a-secret
+          MAIL_HOST: smtp.example.com
+          MAIL_USERNAME: tickets
+          MAIL_PASSWORD: not-a-secret
+          MAIL_FROM: Popcorn Palace <tickets@example.com>
+        run: |
+          docker compose -f compose.yml -f compose.prod.yml config --quiet
+          docker run --rm -e SITE_HOST -e API_HOST -e GRAFANA_HOST -e TRACES_HOST \
+            -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2.11-alpine caddy validate --config /etc/caddy/Caddyfile
+          shellcheck deploy/*.sh
+
       - name: Validate Prometheus configuration
         run: >
           docker run --rm -v "$PWD/observability/prometheus.yml:/prometheus.yml:ro"

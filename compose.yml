@@ -161,6 +161,8 @@ services:
       REDIS_HOST: redis
       MAIL_HOST: mailpit
       MAIL_PORT: 1025
+      # Showtimes in emails are on the clock of the cinema, as on the site.
+      NOTIFICATION_TIME_ZONE: ${CINEMA_TIME_ZONE:-UTC}
       OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
       LOG_FORMAT: ${LOG_FORMAT:-}
     healthcheck:

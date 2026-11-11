@@ -120,6 +120,7 @@ The parts that took thought, and where each is explained and tested.
 | Keeping the token away from scripts | The browser talks to the web client only; the token lives in an `HttpOnly` cookie and every call to the API is made by the server | [How it fits together](frontend/README.md#how-it-fits-together) |
 | One request across two services and a queue | A trace that survives the outbox: the row stores the request's trace context and the relay continues it | [Traces](backend/README.md#traces) |
 | A cinema has one clock | Showtimes are stored as instants and shown and entered on the cinema's clock, including the nights the clocks change | [Time](frontend/README.md#time) |
+| The same stack on a laptop and on a server | One compose file with a production layer over it: images tagged by commit, nothing reachable but the web server, secrets without defaults, and a release that is one script run by a key that can do nothing else | [Running it on a server](deploy/README.md) |
 | Rules that hold when the code is wrong | Constraints in the database, not only checks in the services, and Flyway migrations that own the schema | [Business rules](backend/README.md#business-rules-and-where-they-are-enforced) |
 
 ## Watching it work
@@ -197,7 +198,7 @@ The API finds the database through `DB_URL`, `DB_USERNAME` and `DB_PASSWORD`, wh
 - **One cinema.** There is one programme and one time zone, not a chain.
 - **No refresh tokens.** A session lasts as long as its access token, one hour.
 - **The pictures are not its own.** Film information, posters and stills come from TMDB and are served by TMDB's picture servers; the API stores their addresses, not the files. This product uses the TMDB API but is not endorsed or certified by TMDB.
-- **Not deployed yet.** It runs locally with one command; a public demo is the next step.
+- **No public demo yet.** Everything a server needs is in the repository (see [Running it on a server](deploy/README.md)): the production layer over the compose file, HTTPS, and a workflow that releases every change to `main`. The server itself is the next step.
 
 ## Repository
 
@@ -207,12 +208,15 @@ backend/         the booking API
 notifications/   the service that emails tickets
 observability/   Prometheus configuration and the Grafana dashboard
 compose.yml      the whole stack
+compose.prod.yml what changes when the stack runs on a server
+deploy/          the web server in front of it, and the scripts that release it
 docs/            the pictures on this page
 ```
 
 - [Web client](frontend/README.md): how the browser, the client and the API fit together, the seat map, time, rendering, tests
 - [Booking API](backend/README.md): the API, errors, business rules and where they are enforced, events, observability
 - [Notifications service](notifications/README.md)
+- [Running it on a server](deploy/README.md): what production changes, how a release happens, setting a server up
 
 This repository combines `antoniosifov/popcorn-palace` and `antoniosifov/popcorn-palace-frontend`; both histories are preserved through the import merge. The static pages that `frontend/` held before the Next.js client are in that history as well.
 

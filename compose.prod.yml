@@ -1,0 +1,119 @@
+# The same stack on a server, behind HTTPS. Laid over compose.yml:
+#
+#   docker compose -f compose.yml -f compose.prod.yml up -d --wait
+#
+# (the .env of a server sets COMPOSE_FILE, so plain `docker compose` means this).
+# What changes: images are pulled instead of built, nothing but the web server
+# is reachable from outside, secrets have no defaults, tickets go to real
+# mailboxes, and what must survive a new release is kept on volumes.
+# See deploy/README.md. Needs Docker Compose 2.24 or newer.
+services:
+  # The only door: ports 80 and 443. Gets and renews the certificates itself.
+  caddy:
+    image: caddy:2.11-alpine
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      SITE_HOST: ${SITE_HOST:?set SITE_HOST in .env, see deploy/.env.example}
+      API_HOST: ${API_HOST:?set API_HOST in .env}
+      GRAFANA_HOST: ${GRAFANA_HOST:?set GRAFANA_HOST in .env}
+      TRACES_HOST: ${TRACES_HOST:?set TRACES_HOST in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      # HTTP/3.
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and their keys: losing them means asking for new ones, and that is rationed.
+      - caddy-data:/data
+      - caddy-config:/config
+
+  db:
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    ports: !reset []
+
+  redis:
+    ports: !reset []
+
+  kafka:
+    environment:
+      # The broker's own memory; the rest of its speed comes from the page cache.
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx400m
+      # Events that are published but not yet read survive a new release.
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    ports: !reset []
+
+  # Tickets go to real mailboxes here, so the mail catcher is not started.
+  mailpit:
+    profiles: ["mail-catcher"]
+    ports: !reset []
+
+  api:
+    image: ghcr.io/antoniosifov/popcorn-palace-api:${IMAGE_TAG:-latest}
+    build: !reset null
+    environment:
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?set ADMIN_EMAIL in .env}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
+      CORS_ALLOWED_ORIGIN_PATTERNS: https://${SITE_HOST}
+      JAVA_TOOL_OPTIONS: -Xmx400m
+    ports: !reset []
+
+  web:
+    image: ghcr.io/antoniosifov/popcorn-palace-web:${IMAGE_TAG:-latest}
+    build: !reset null
+    environment:
+      # Served over HTTPS: the session cookie never travels over plain HTTP.
+      SESSION_COOKIE_SECURE: "true"
+    ports: !reset []
+
+  notifications:
+    image: ghcr.io/antoniosifov/popcorn-palace-notifications:${IMAGE_TAG:-latest}
+    build: !reset null
+    depends_on: !override
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      MAIL_HOST: ${MAIL_HOST:?set MAIL_HOST in .env}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:?set MAIL_USERNAME in .env}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:?set MAIL_PASSWORD in .env}
+      # Log in, and refuse to talk to the mail service over an unencrypted connection.
+      MAIL_SECURE: "true"
+      MAIL_FROM: ${MAIL_FROM:?set MAIL_FROM in .env}
+      JAVA_TOOL_OPTIONS: -Xmx200m
+
+  jaeger:
+    ports: !reset []
+
+  prometheus:
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # Whichever comes first: the disk of a small server is not for metrics.
+      - --storage.tsdb.retention.time=15d
+      - --storage.tsdb.retention.size=1GB
+    volumes:
+      - prometheus-data:/prometheus
+    ports: !reset []
+
+  grafana:
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?set GRAFANA_PASSWORD in .env}
+      GF_SERVER_ROOT_URL: https://${GRAFANA_HOST}
+    ports: !reset []
+
+volumes:
+  caddy-data:
+  caddy-config:
+  kafka-data:
+  prometheus-data:
