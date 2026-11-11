@@ -1,6 +1,6 @@
 # Popcorn Palace Notifications
 
-A small service that emails tickets. It reads booking events that the [API](../backend/README.md) publishes to Kafka and sends a ticket email when a booking is confirmed and a cancellation email when it is cancelled.
+A small service that sends the cinema's emails. It reads the events that the [API](../backend/README.md) publishes to Kafka: a ticket email when a booking is confirmed, a cancellation email when it is cancelled, and the link to set a new password when one was asked for.
 
 It shares nothing with the API but the events: no database, no HTTP calls in either direction. Either service can be down, restarted or redeployed without the other noticing; events published while this service is down are delivered when it comes back.
 
@@ -9,9 +9,13 @@ It shares nothing with the API but the events: no database, no HTTP calls in eit
 ```mermaid
 flowchart LR
     Kafka[("Kafka<br/>popcorn.booking-events")] --> Listener["BookingEventListener"]
+    Accounts[("Kafka<br/>popcorn.account-events")] --> AccountListener["AccountEventListener"]
     Listener --> Processed[("Redis<br/>handled event ids")]
-    Listener --> Mail["TicketMailer"] --> SMTP["Mail server<br/>(Mailpit locally)"]
+    AccountListener --> Processed
+    Listener --> Mail["Mail"] --> SMTP["Mail server<br/>(Mailpit locally)"]
+    AccountListener --> Mail
     Listener -. after retries .-> DLT[("Kafka<br/>popcorn.booking-events.DLT")]
+    AccountListener -. after retries .-> Dropped["dropped and counted"]
 ```
 
 | Concern | What the service does |
@@ -20,6 +24,7 @@ flowchart LR
 | Temporary failures (mail server down) | The event is retried three times, two seconds apart. |
 | Permanent failures (not JSON, required fields missing) | No retries: the message is copied unchanged to the dead-letter topic `popcorn.booking-events.DLT` and skipped, so it cannot block the events behind it. The same happens to an event that still fails after its retries. Parked events are not recorded as handled, so they can be replayed. |
 | Unknown event types | Skipped. The API may publish new kinds of events at any time. |
+| An event that carries a secret | The link that sets a new password arrives on its own topic, `popcorn.account-events`, which keeps messages for an hour. The link goes into one email and nowhere else: log lines name the event and never its content, and an event that cannot become an email is dropped and counted (`popcorn_notifications_dropped_total`) instead of copied to a dead-letter topic, where it would sit for a week. Nothing is lost by that: the link is dead within half an hour and the customer asks for another. A link that has already expired on its way is not sent at all. |
 | Changes to the event format | The service reads only the fields it needs and ignores the rest, so the API can add fields without this service changing. |
 | Watching it | Port 8081 (inside the stack only) serves `/actuator/health` with `kafka`, `redis` and `mail` components, readiness (`kafka`, `redis`) and liveness probes, and `/actuator/prometheus`: emails sent by type (`popcorn_notifications_emails_total`), duplicates ignored, events parked in the dead-letter topic (`popcorn_notifications_dead_letters_total`), and the Kafka consumer's lag. |
 | Tracing | Each event is handled inside the trace the API started for the booking request (the `traceparent` header the outbox relay puts on the message). The consumer span, the email and the log lines carry that trace id, and the email repeats it in an `X-Popcorn-Trace-Id` header, so a customer's email and the request that caused it can be matched from either end. Spans go to Jaeger in the local stack. |
@@ -52,4 +57,4 @@ To run it from the IDE, start the infrastructure only (`docker compose up db red
 ./mvnw verify
 ```
 
-Docker must be running: the tests start Kafka and Redis through Testcontainers and an in-memory SMTP server (GreenMail), publish events to the real topic and wait for the emails to arrive. They cover the ticket and cancellation emails, duplicate delivery, unknown event types, malformed messages going to the dead-letter topic, a mail server that stays down, the trace id travelling from the Kafka message into the email, the health and metrics endpoints, and the settings of a real mail service: with `MAIL_SECURE` on, nothing is sent to a server that offers no encryption.
+Docker must be running: the tests start Kafka and Redis through Testcontainers and an in-memory SMTP server (GreenMail), publish events to the real topic and wait for the emails to arrive. They cover the ticket and cancellation emails, duplicate delivery, unknown event types, malformed messages going to the dead-letter topic, a mail server that stays down, the trace id travelling from the Kafka message into the email, the health and metrics endpoints, the password reset email (its link, a redelivery, a link that expired on the way, and an event that fails being dropped rather than parked), and the settings of a real mail service: with `MAIL_SECURE` on, nothing is sent to a server that offers no encryption.

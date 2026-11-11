@@ -11,6 +11,7 @@ A movie ticket booking backend built with Java 21 and Spring Boot 4. It manages 
 - Live seat map: a browser subscribes to a showtime and sees seats become held, sold and free again as it happens, whichever instance of the API made the change
 - A catalogue that can keep itself current: with a TMDB key, the films in cinemas now are imported with their posters, stills, trailers and credits, and read again twice a day
 - Accounts with stateless JWT authentication and two roles: customers book, administrators manage the catalog
+- A forgotten password is replaced through a one-time link sent by email, and the change ends the account's earlier sessions
 - Checkout with temporary seat holds in Redis (atomic Lua scripts, automatic expiry) confirmed into bookings in PostgreSQL
 - Payments that are safe to retry: idempotency keys, a refund if the booking fails after the charge, and a job that settles payments left unfinished
 - Cancellation with refund; the seats go back on sale while the booking stays on record
@@ -21,7 +22,7 @@ A movie ticket booking backend built with Java 21 and Spring Boot 4. It manages 
 - Business rules enforced by database constraints, so they hold under concurrency
 - Uniform error responses in the RFC 9457 "problem details" format with machine-readable codes
 - Observability built in: health probes, Prometheus metrics for the business (holds, bookings, payments, outbox backlog, open seat maps) as well as the runtime, and one OpenTelemetry trace from the booking request through the outbox and Kafka to the ticket email, with the trace id in every response
-- 233 automated tests, most of them calling the API over HTTP against real PostgreSQL, Redis and Kafka
+- 250 automated tests, most of them calling the API over HTTP against real PostgreSQL, Redis and Kafka
 
 ## Architecture
 
@@ -87,6 +88,8 @@ Base URL: `http://localhost:8080/api/v1`. Interactive documentation: http://loca
 | --- | --- | --- | --- | --- |
 | `POST` | `/auth/register` | Create a customer account, returns a token | anyone | `201` |
 | `POST` | `/auth/login` | Log in, returns a token | anyone | `200` |
+| `POST` | `/auth/password-reset` | Ask for a link to set a new password; the answer is the same whether or not the email has an account | anyone | `202` |
+| `POST` | `/auth/password-reset/confirm` | Set a new password with the token from the emailed link | anyone | `204` |
 | `GET` | `/users/me` | The account that owns the token | logged in | `200` |
 | `GET` | `/movies` | List movies (paginated) | anyone | `200` |
 | `GET` | `/movies/{id}` | Get a movie | anyone | `200` |
@@ -152,9 +155,22 @@ Design decisions:
 - **Someone else's booking is a `404`, not a `403`.** A `403` would confirm that the id exists.
 - **Passwords are stored only as BCrypt hashes** and are kept out of logs (`toString` of the request objects masks them).
 
-- **Login and registration are throttled.** Ten attempts per client address per minute across both endpoints, counted in Redis so all instances share the count; after that the API answers `429 TOO_MANY_REQUESTS` with a `Retry-After` header. If Redis is down the limiter lets requests through rather than locking everyone out. Behind the web client or a reverse proxy every request arrives from the same address, so there the limit would count all visitors together: with `FORWARD_HEADERS_STRATEGY=native` the address is taken from the `X-Forwarded-For` header instead, trusted only when the request comes from a private network address (the proxy), and it is the address that proxy saw, not whatever the visitor put in the header.
+- **Login and registration are throttled.** Ten attempts per client address per minute across all four authentication endpoints (the two for a forgotten password included), counted in Redis so all instances share the count; after that the API answers `429 TOO_MANY_REQUESTS` with a `Retry-After` header. If Redis is down the limiter lets requests through rather than locking everyone out. Behind the web client or a reverse proxy every request arrives from the same address, so there the limit would count all visitors together: with `FORWARD_HEADERS_STRATEGY=native` the address is taken from the `X-Forwarded-For` header instead, trusted only when the request comes from a private network address (the proxy), and it is the address that proxy saw, not whatever the visitor put in the header.
 
 Not implemented yet: refresh tokens.
+
+### A forgotten password
+
+`POST /auth/password-reset` with an email, then `POST /auth/password-reset/confirm` with the token from the emailed link and the new password.
+
+- **The answer does not say whether the email is registered.** Always `202` with an empty body. The form would otherwise tell a stranger which addresses have accounts, which is what the login form is careful not to do.
+- **The link is a secret, and only its hash is stored.** The token is 256 random bits; `password_reset_tokens` keeps its SHA-256. A fast hash is the right one here, unlike for a password: there is nothing to guess, only something that must not be readable from a backup or a mistaken query.
+- **It works once, for 30 minutes, and only the newest one does.** Using a link is a `DELETE ... RETURNING`, so of several simultaneous attempts exactly one finds the row. Asking again replaces the earlier link. Unknown, expired, replaced and used tokens all get the same `400 RESET_LINK_INVALID`. A password that is rejected does not spend the link.
+- **It cannot be used to fill somebody's mailbox.** On top of the limit per client address, one account is sent at most three links an hour, whoever asks and from wherever. Further requests are answered `202` like the rest and send nothing.
+- **A new password ends the sessions that were open.** An access token is verified by its signature, so by itself it would outlive the change by up to an hour, which is exactly the hour a thief who knew the old password stays logged in. Each token carries the account's session version (`sv`); changing the password raises it, and `SessionVersions` refuses tokens issued for an earlier one. The new version is kept in Redis for one token lifetime, after which every older token has expired anyway. If Redis is restarted within that hour, or is down, tokens are judged by signature and expiry as before: an outage must not log everybody out.
+- **The link passes through the outbox and Kafka and is kept in neither.** The email is sent the way tickets are, so it exists if and only if the request committed. But published outbox rows are normally kept for a week and Kafka keeps messages for as long: too long for a secret. The event is written as confidential (`Outbox.appendConfidential`) and deleted the moment Kafka acknowledges it, its topic keeps messages for an hour, and the notifications service neither logs the link nor parks a failed event in a dead-letter topic.
+
+What is left: a request for a registered email does two inserts more than one for an unknown email, so the two differ by a hair in response time, though not in what they answer.
 
 ### Request bodies
 
@@ -389,6 +405,7 @@ Validation failures list every rejected field:
 | `400` | `SEAT_NOT_IN_HALL` | Holding a seat that is not in the showtime's hall |
 | `400` | `TOO_MANY_SEATS` | Holding more than eight seats at once |
 | `401` | `UNAUTHENTICATED` | No access token, or one that is invalid or expired (with a `WWW-Authenticate: Bearer` header) |
+| `400` | `RESET_LINK_INVALID` | A password reset token that is unknown, expired, replaced by a newer one or already used |
 | `401` | `INVALID_CREDENTIALS` | Login with an unknown email or a wrong password |
 | `402` | `PAYMENT_DECLINED` | The card was declined (reason in `declineCode`); the seats stay held |
 | `403` | `FORBIDDEN` | The account's role does not allow the action |
@@ -406,7 +423,7 @@ Validation failures list every rejected field:
 | `409` | `PAYMENT_REFUNDED` | Repeating a request whose charge was refunded because the booking could not be saved |
 | `409` | `CONCURRENT_UPDATE` | Two requests changed the same booking at once; retry |
 | `422` | `IDEMPOTENCY_KEY_REUSED` | The key was already used for a different purchase |
-| `429` | `TOO_MANY_REQUESTS` | Too many login or registration attempts; see the `Retry-After` header |
+| `429` | `TOO_MANY_REQUESTS` | Too many login, registration or password reset attempts; see the `Retry-After` header |
 | `502` | `PAYMENT_PROVIDER_UNAVAILABLE` | The payment provider failed; nobody was charged |
 | `503` | `SERVICE_UNAVAILABLE` | PostgreSQL or Redis cannot be reached |
 
@@ -576,6 +593,21 @@ Kafka headers `eventType` and `eventId` repeat the type and id, so a consumer ca
 | The booking's transaction rolls back | The event rolls back with it: nothing is ever published for a booking that does not exist |
 | Several API instances run | One relay publishes at a time; the others find the lock taken and step aside |
 
+A second topic, `popcorn.account-events`, carries what happens to an account. Its one event so far asks for the email of [a forgotten password](#a-forgotten-password):
+
+```json
+{
+  "eventId": "5c1e0f4a-...",
+  "type": "PasswordResetRequested",
+  "version": 1,
+  "occurredAt": "2030-01-10T12:03:00.000Z",
+  "account": { "id": "85df2e82-...", "email": "anna@example.com", "displayName": "Anna" },
+  "passwordReset": { "url": "https://popcorn.example.com/reset-password?token=...", "expiresAt": "2030-01-10T12:33:00.000Z" }
+}
+```
+
+It goes through the same outbox, with one difference: it is confidential. The row is deleted as soon as Kafka has acknowledged it instead of being kept for a week, and the topic keeps messages for one hour.
+
 `OutboxTest` covers the round trip from a booking to a message read back from Kafka, ordering of a confirmation and its cancellation, rollback leaving no event, a Kafka outage, and four relays running at once delivering sixty events exactly once and in order.
 
 ## Live seat map
@@ -706,6 +738,7 @@ Every log line names the application, trace and span (`[popcorn-palace,4bf92f35�
 | `V6` | The outbox table for booking events |
 | `V7` | The outbox row carries the trace context of the request that wrote it |
 | `V8` | How a movie is presented (description, tagline, poster, still, trailer, director, cast) and where it came from (`tmdb_id`, popularity, whether it is in cinemas) |
+| `V9` | A forgotten password: hashed, expiring reset tokens (one per account); a session version on every account, raised when the password changes; outbox events that are deleted as soon as they are published |
 
 `V2` migrates existing data instead of dropping it: each distinct theater name becomes a hall with 15 × 20 seats (the first API accepted seat numbers 1–300), the old showtime price becomes its standard price, and each booking is pointed at its seat and keeps the price it was sold for. `V3` gives the user ids carried by older bookings placeholder accounts that cannot be logged into, so the new foreign key holds. `V4` turns each existing single-seat booking into an order with one seat row. `SchemaMigrationTest` builds a database at `V1`, fills it, migrates to the latest version and checks the result.
 
@@ -764,7 +797,7 @@ Windows:
 | `SEATMAP_STREAM_TIMEOUT` | After how long a live seat map stream is closed (the browser reconnects) | `PT30M` |
 | `SEATMAP_HEARTBEAT_INTERVAL` | How often open streams get a keep-alive comment | `PT15S` |
 | `PAYMENT_CURRENCY` | ISO 4217 code of the currency all prices are in | `USD` |
-| `AUTH_RATE_LIMIT` | Login and registration attempts per client address per minute | `10` |
+| `AUTH_RATE_LIMIT` | Login, registration and password reset attempts per client address per minute | `10` |
 | `FORWARD_HEADERS_STRATEGY` | `native` behind the web client or a reverse proxy: the client address comes from `X-Forwarded-For` | `none` |
 | `DEMO_DATA` | `true` keeps a demo programme: halls, movies and a week of showtimes | `false` (`true` in compose) |
 | `TMDB_API_KEY` | A TMDB access token or API key: imports the films in cinemas now. Empty switches the import off | empty |
@@ -773,6 +806,8 @@ Windows:
 | `CINEMA_TIME_ZONE` | The IANA time zone the demo programme is scheduled in | `UTC` |
 | `JWT_SECRET` | Key that signs access tokens, at least 32 characters | empty: a random key per start, so tokens stop working after a restart |
 | `JWT_TTL` | Lifetime of an access token (ISO-8601 duration) | `PT1H` |
+| `SITE_URL` | The address customers reach the site at; links in emails are built from it | `http://localhost:3000` |
+| `PASSWORD_RESET_TTL` | How long a password reset link works (ISO-8601 duration) | `PT30M` |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Administrator created at startup if missing | none outside compose |
 | `CORS_ALLOWED_ORIGIN_PATTERNS` | Browser origins allowed to call the API | any `localhost` port |
 | `MANAGEMENT_PORT` | Health, info and metrics; keep it inside the network | `8081` |
@@ -797,4 +832,4 @@ Windows:
 
 Docker must be running: the API tests start disposable PostgreSQL, Redis and Kafka containers through Testcontainers and call the application over HTTP, so they exercise JSON mapping, validation, security, transactions, migrations, constraints, the Redis scripts, the outbox, the live seat map and the management endpoints together. Rules that need no database (text normalization, request validation, sort allow-list) have plain unit tests.
 
-Current suite: **233 tests passing**. The notifications service has its own suite, see its [README](../notifications/README.md).
+Current suite: **250 tests passing**. The notifications service has its own suite, see its [README](../notifications/README.md).
