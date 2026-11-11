@@ -79,6 +79,14 @@ app:
     # Its messages can carry a link that lets its holder into an account, so
     # Kafka keeps them only this long.
     account-retention: PT1H
+  google:
+    # The OAuth client people sign in with (Google Cloud console, "OAuth client ID",
+    # type "Web application"). An ID token is accepted only if Google issued it for
+    # this id. Empty: signing in with Google is off.
+    client-id: ${GOOGLE_CLIENT_ID:}
+    # Where Google publishes the keys it signs ID tokens with, and how it names itself in them.
+    jwk-set-uri: ${GOOGLE_JWK_SET_URI:https://www.googleapis.com/oauth2/v3/certs}
+    issuers: https://accounts.google.com, accounts.google.com
   password-reset:
     # How long the link in the email works.
     ttl: ${PASSWORD_RESET_TTL:PT30M}

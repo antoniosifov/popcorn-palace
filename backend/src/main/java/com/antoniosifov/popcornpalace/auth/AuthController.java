@@ -1,5 +1,8 @@
 package com.antoniosifov.popcornpalace.auth;
 
+import com.antoniosifov.popcornpalace.auth.google.GoogleProperties;
+import com.antoniosifov.popcornpalace.auth.google.GoogleSignInRequest;
+import com.antoniosifov.popcornpalace.auth.google.GoogleSignInService;
 import com.antoniosifov.popcornpalace.common.ratelimit.RateLimiter;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -16,19 +19,22 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/auth")
 @Tag(name = "Authentication", description = "Create an account, obtain an access token, replace a forgotten password")
-@EnableConfigurationProperties({AuthRateLimitProperties.class, PasswordResetProperties.class})
+@EnableConfigurationProperties({AuthRateLimitProperties.class, PasswordResetProperties.class, GoogleProperties.class})
 public class AuthController
 {
     private final AuthService authService;
     private final PasswordResetService passwordResetService;
+    private final GoogleSignInService googleSignInService;
     private final RateLimiter rateLimiter;
     private final AuthRateLimitProperties rateLimit;
 
     public AuthController(AuthService authService, PasswordResetService passwordResetService,
+                          GoogleSignInService googleSignInService,
                           RateLimiter rateLimiter, AuthRateLimitProperties rateLimit)
     {
         this.authService = authService;
         this.passwordResetService = passwordResetService;
+        this.googleSignInService = googleSignInService;
         this.rateLimiter = rateLimiter;
         this.rateLimit = rateLimit;
     }
@@ -50,6 +56,20 @@ public class AuthController
     {
         throttle(httpRequest);
         return authService.login(request);
+    }
+
+    @PostMapping("/google")
+    @Operation(summary = "Sign in with Google", description = """
+            Takes the ID token Google issued when the person signed in, checks it (signature, issuer, \
+            that it was issued for this application, expiry, nonce) and answers like a login. The first \
+            sign-in opens an account; later ones find it by Google's subject, not by email. An existing \
+            account with the same email is connected, and loses its password and sessions if its email \
+            had never been proven. Fails with 401 GOOGLE_SIGN_IN_FAILED for a token that fails any check \
+            and with 404 GOOGLE_SIGN_IN_DISABLED where no Google client id is configured.""")
+    public AuthResponse signInWithGoogle(@Valid @RequestBody GoogleSignInRequest request, HttpServletRequest httpRequest)
+    {
+        throttle(httpRequest);
+        return googleSignInService.signIn(request.idToken(), request.nonce());
     }
 
     @PostMapping("/password-reset")
@@ -78,7 +98,7 @@ public class AuthController
 
     /**
      * Slows down password guessing, mass sign-ups and guessing of reset tokens.
-     * Counted per client address across all four endpoints, before any password
+     * Counted per client address across all five endpoints, before any password
      * hashing happens.
      */
     private void throttle(HttpServletRequest httpRequest)

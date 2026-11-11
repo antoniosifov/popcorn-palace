@@ -17,6 +17,7 @@ The part of Popcorn Palace a customer opens in a browser: the programme, a live 
 - A back office for administrators: movies, halls (with a preview of the layout as it is designed) and showtimes
 - Pages are prerendered shells that fill in at request time; the build needs no running API
 - A forgotten password is replaced through a link sent by email, and the change logs out every other browser
+- Signing in with Google, as a round trip this server makes: the browser never sees the client secret or a token
 - A shared link is previewed with a picture: the site's own card, or the still of the film the link is to
 - Unit and component tests for the rules, and end-to-end tests that drive a real browser against the whole stack, down to the ticket email
 
@@ -144,16 +145,37 @@ npm run dev
 
 Open http://localhost:3000. Settings go in `.env.local`:
 
-| Variable                | Default                      | Meaning                                                                                                                                        |
-| ----------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `API_URL`               | `http://localhost:8080`      | Where the API is, as seen from this server                                                                                                     |
-| `CINEMA_TIME_ZONE`      | `UTC`                        | The IANA zone whose clock all times are shown on, for example `Europe/Berlin`                                                                  |
-| `CURRENCY`              | `USD`                        | ISO 4217 code of the prices (the API's `PAYMENT_CURRENCY`)                                                                                     |
-| `SESSION_COOKIE_SECURE` | `true` in a production build | Send the session cookie over HTTPS only. Set to `false` only where the site is served over plain HTTP on purpose, as the local Docker stack is |
-| `SITE_URL`              | the address of the request   | The address the site is reached at, for the picture a shared link is previewed with. Set on a server; elsewhere the request says it            |
-| `PORT`                  | `3000`                       | The port of the server                                                                                                                         |
+| Variable                                   | Default                      | Meaning                                                                                                                                                                                                                          |
+| ------------------------------------------ | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `API_URL`                                  | `http://localhost:8080`      | Where the API is, as seen from this server                                                                                                                                                                                       |
+| `CINEMA_TIME_ZONE`                         | `UTC`                        | The IANA zone whose clock all times are shown on, for example `Europe/Berlin`                                                                                                                                                    |
+| `CURRENCY`                                 | `USD`                        | ISO 4217 code of the prices (the API's `PAYMENT_CURRENCY`)                                                                                                                                                                       |
+| `SESSION_COOKIE_SECURE`                    | `true` in a production build | Send the session cookie over HTTPS only. Set to `false` only where the site is served over plain HTTP on purpose, as the local Docker stack is                                                                                   |
+| `SITE_URL`                                 | the address of the request   | The address the site is reached at, for the picture a shared link is previewed with. Set on a server; elsewhere the request says it                                                                                              |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | empty                        | An OAuth client of type "Web application" (Google Cloud console) whose authorised redirect URI is `<site>/api/auth/google/callback`. Both set: the forms offer "Continue with Google". The API needs the same `GOOGLE_CLIENT_ID` |
+| `PORT`                                     | `3000`                       | The port of the server                                                                                                                                                                                                           |
 
 All of them are read by the server when a request comes in. None is compiled into the bundle, so one image runs in any environment.
+
+## Signing in with Google
+
+"Continue with Google" is a round trip that this server makes, not the page (`lib/google.ts`, `app/api/auth/google`):
+
+1. `/api/auth/google` remembers the attempt in a short-lived `HttpOnly` cookie and sends the browser to Google.
+2. Google sends the browser back to `/api/auth/google/callback` with a one-time code.
+3. This server exchanges the code for an ID token, with the client secret, and hands the token to the API, which checks it and answers with a session like a login does.
+
+Three values tie the way out to the way back, and none of them trusts the browser:
+
+| Value         | Where it goes                                            | What it stops                                                                                |
+| ------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `state`       | To Google and back in the address; must match the cookie | Finishing a sign-in that this browser did not start (somebody else's code, sent to a victim) |
+| PKCE verifier | Stays in the cookie; Google gets only its hash           | A code that leaks on the way back being exchanged by somebody else                           |
+| `nonce`       | Into the ID token, by Google; checked by the API         | A token issued for another attempt being replayed                                            |
+
+Every way it can fail ends on the login form with one sentence. The reason travels there as a code in the address and is looked up in a fixed list, so an address somebody writes cannot put words onto the page.
+
+The end-to-end tests cannot use Google itself, so they use a stand-in ([`e2e/fake-google.mjs`](e2e/fake-google.mjs), started by `compose.e2e.yml`): it sends the browser back with a code, exchanges it for a signed ID token and publishes its keys, and is as strict as Google about the client id, the redirect address, the secret and PKCE. CI runs with it; locally those six tests are skipped unless the stack was started with `compose.e2e.yml`.
 
 ## Tests
 
@@ -165,20 +187,21 @@ npm run typecheck
 npm run format:check
 ```
 
-**Unit and component tests** (104) cover the rules without a browser or a server:
+**Unit and component tests** (118) cover the rules without a browser or a server:
 
-| What                                                                              | Where                                                                      |
-| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Times on the cinema's clock, days that are 23 hours long, times that do not exist | [`lib/time.test.ts`](src/lib/time.test.ts)                                 |
-| Seat events, picking, the limit of eight, sums in whole cents                     | [`lib/seatmap.test.ts`](src/lib/seatmap.test.ts)                           |
-| Every step from picking to paying, including events that overtake answers         | [`lib/booking-state.test.ts`](src/lib/booking-state.test.ts)               |
-| The API client: tokens, problems, an unreachable API                              | [`lib/api/client.test.ts`](src/lib/api/client.test.ts)                     |
-| Error messages, idempotency keys, safe redirects, booking status                  | [`lib/errors.test.ts`](src/lib/errors.test.ts)                             |
-| Pictures at every width, addresses that are refused, the trailer's id             | [`lib/artwork.test.ts`](src/lib/artwork.test.ts)                           |
-| The address the site gives for itself, the description in a link's preview        | [`lib/site.test.ts`](src/lib/site.test.ts)                                 |
-| The seat picker as a customer uses it, with the stream and the server replaced    | [`components/seat-booking.test.tsx`](src/components/seat-booking.test.tsx) |
+| What                                                                                                       | Where                                                                      |
+| ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Times on the cinema's clock, days that are 23 hours long, times that do not exist                          | [`lib/time.test.ts`](src/lib/time.test.ts)                                 |
+| Seat events, picking, the limit of eight, sums in whole cents                                              | [`lib/seatmap.test.ts`](src/lib/seatmap.test.ts)                           |
+| Every step from picking to paying, including events that overtake answers                                  | [`lib/booking-state.test.ts`](src/lib/booking-state.test.ts)               |
+| The API client: tokens, problems, an unreachable API                                                       | [`lib/api/client.test.ts`](src/lib/api/client.test.ts)                     |
+| Error messages, idempotency keys, safe redirects, booking status                                           | [`lib/errors.test.ts`](src/lib/errors.test.ts)                             |
+| Pictures at every width, addresses that are refused, the trailer's id                                      | [`lib/artwork.test.ts`](src/lib/artwork.test.ts)                           |
+| The address the site gives for itself, the description in a link's preview                                 | [`lib/site.test.ts`](src/lib/site.test.ts)                                 |
+| A sign-in with Google: the attempt and its cookie, the address the browser is sent to, exchanging the code | [`lib/google.test.ts`](src/lib/google.test.ts)                             |
+| The seat picker as a customer uses it, with the stream and the server replaced                             | [`components/seat-booking.test.tsx`](src/components/seat-booking.test.tsx) |
 
-**End-to-end tests** (17) drive Chromium against the stack that `docker compose` starts, and run in CI on every pull request:
+**End-to-end tests** (23) drive Chromium against the stack that `docker compose` starts, and run in CI on every pull request:
 
 - a visitor opens a film's page from the programme and goes on from it to another film;
 - a customer registers, picks seats, pays, sees the ticket, and the email arrives (browser to API to Kafka to the notifications service to the mail catcher);

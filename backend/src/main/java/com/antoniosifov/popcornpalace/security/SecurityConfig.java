@@ -50,7 +50,7 @@ public class SecurityConfig
                 // Uses the CORS rules from WebConfig and answers preflight requests before authentication.
                 .cors(Customizer.withDefaults())
                 .authorizeHttpRequests(requests -> requests
-                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/register", "/api/v1/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/google").permitAll()
                         // Whoever forgot their password cannot be asked to log in first.
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/password-reset", "/api/v1/auth/password-reset/confirm").permitAll()
                         .requestMatchers(API_DOCS).permitAll()

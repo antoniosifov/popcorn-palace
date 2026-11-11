@@ -142,6 +142,8 @@ public class PasswordResetService
                 .orElseThrow(() -> new IllegalStateException("A reset token outlived its account"));
 
         user.changePassword(passwordEncoder.encode(newPassword));
+        // Whoever got here opened a link that was sent to the email: it is theirs.
+        user.confirmEmail();
         // Last, and inside the transaction: if the old sessions cannot be ended, the password is not changed.
         sessionVersions.moveTo(user.getId(), user.getSessionVersion());
         log.info("Password of account {} was reset", user.getId());
