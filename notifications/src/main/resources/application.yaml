@@ -39,7 +39,15 @@ spring:
   mail:
     host: ${MAIL_HOST:localhost}
     port: ${MAIL_PORT:1025}
+    # A real mail service wants a login; the mail catcher of the local stack takes anything.
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
     properties:
+      # "true" for a real mail service: log in, and send nothing unless the
+      # connection has been encrypted (STARTTLS, port 587).
+      mail.smtp.auth: ${MAIL_SECURE:false}
+      mail.smtp.starttls.enable: ${MAIL_SECURE:false}
+      mail.smtp.starttls.required: ${MAIL_SECURE:false}
       mail.smtp.connectiontimeout: 5000
       mail.smtp.timeout: 5000
       mail.smtp.writetimeout: 5000
