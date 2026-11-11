@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { Suspense } from "react";
 
@@ -7,6 +8,7 @@ import { Wordmark } from "@/components/brand";
 import { Nav } from "@/components/nav";
 import { Reveals } from "@/components/reveals";
 import { currentUser } from "@/lib/auth";
+import { siteOrigin } from "@/lib/site";
 
 import "./globals.css";
 
@@ -17,10 +19,21 @@ const inter = Inter({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: { default: "Popcorn Palace", template: "%s · Popcorn Palace" },
-  description: "Tonight's films, their showtimes, and a live seat map to book on.",
-};
+/**
+ * What a page says about itself, to a browser and to whatever previews a
+ * shared link. The picture of that preview is opengraph-image.png next to this
+ * file; its address has to be a complete one, so the address of the site is
+ * read from the request (or SITE_URL), not compiled in: one image runs anywhere.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    metadataBase: siteOrigin(process.env.SITE_URL, await headers()),
+    title: { default: "Popcorn Palace", template: "%s · Popcorn Palace" },
+    description: "Tonight's films, their showtimes, and a live seat map to book on.",
+    openGraph: { type: "website", siteName: "Popcorn Palace" },
+    twitter: { card: "summary_large_image" },
+  };
+}
 
 export const viewport: Viewport = {
   themeColor: "#111111",

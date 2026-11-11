@@ -165,15 +165,17 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install dependencies and a browser
+      - name: Install dependencies
         working-directory: frontend
-        run: |
-          npm ci
-          npx playwright install --with-deps chromium
+        run: npm ci
 
+      # The browser is the Chrome the runner already has: nothing is downloaded,
+      # so the job does not fail when a package mirror cannot be reached.
       - name: Run the tests
         working-directory: frontend
         run: npm run e2e
+        env:
+          PLAYWRIGHT_CHANNEL: chrome
 
       - name: Logs of the stack
         if: failure()
