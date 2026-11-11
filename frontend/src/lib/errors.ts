@@ -33,6 +33,8 @@ const MESSAGES: Record<string, string> = {
   INVALID_CREDENTIALS: "The email or the password is not right.",
   EMAIL_TAKEN: "An account with this email already exists. Log in instead.",
   RESET_LINK_INVALID: "This link has expired or has already been used.",
+  GOOGLE_SIGN_IN_FAILED: "Signing in with Google did not work. Try again.",
+  GOOGLE_EMAIL_UNVERIFIED: "Google has not confirmed this email address yet. Confirm it with Google and try again.",
   TOO_MANY_REQUESTS: "Too many attempts. Wait a minute and try again.",
   VALIDATION_FAILED: "Some fields need another look.",
   SEAT_ALREADY_HELD: "Somebody else is booking some of these seats right now. Pick other seats.",
@@ -50,6 +52,19 @@ const MESSAGES: Record<string, string> = {
   HALL_HAS_SHOWTIMES: "This hall still has showtimes. Remove them first.",
   SHOWTIME_HAS_BOOKINGS: "Tickets have been sold for this showtime, so it cannot be removed or moved to another hall.",
 };
+
+/**
+ * The sentence for a sign-in with Google that ended back on the login form.
+ * The reason arrives in the address, so it is looked up, never shown as it is:
+ * an address anybody can write must not put words onto the page.
+ */
+export function googleProblem(code: string): string | undefined {
+  const known = ["GOOGLE_SIGN_IN_FAILED", "GOOGLE_EMAIL_UNVERIFIED", "TOO_MANY_REQUESTS"];
+  if (code === "EMAIL_TAKEN") {
+    return "The account with this email is connected to another Google account.";
+  }
+  return known.includes(code) ? MESSAGES[code] : undefined;
+}
 
 const DECLINES: Record<string, string> = {
   insufficient_funds: "The card was declined: insufficient funds. Your seats are still held. Try another card.",

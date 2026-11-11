@@ -4,6 +4,7 @@ import { Suspense } from "react";
 
 import { AuthForm } from "@/components/auth-form";
 import { currentUser } from "@/lib/auth";
+import { googleSettings } from "@/lib/google";
 import { safeNextPath } from "@/lib/paths";
 
 export const metadata: Metadata = { title: "Create account" };
@@ -31,5 +32,5 @@ async function Form({ searchParams }: Pick<PageProps<"/register">, "searchParams
   if (await currentUser()) {
     redirect(destination);
   }
-  return <AuthForm mode="register" next={destination} />;
+  return <AuthForm mode="register" next={destination} google={googleSettings() !== null} />;
 }

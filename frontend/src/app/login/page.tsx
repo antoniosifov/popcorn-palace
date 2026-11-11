@@ -4,6 +4,8 @@ import { Suspense } from "react";
 
 import { AuthForm } from "@/components/auth-form";
 import { currentUser } from "@/lib/auth";
+import { googleProblem } from "@/lib/errors";
+import { googleSettings } from "@/lib/google";
 import { safeNextPath } from "@/lib/paths";
 
 export const metadata: Metadata = { title: "Log in" };
@@ -25,7 +27,7 @@ export default function LoginPage({ searchParams }: PageProps<"/login">) {
 }
 
 async function Form({ searchParams }: Pick<PageProps<"/login">, "searchParams">) {
-  const { next, reset } = await searchParams;
+  const { next, reset, google } = await searchParams;
   const destination = safeNextPath(typeof next === "string" ? next : undefined);
   // Somebody who is logged in already has nothing to do here.
   if (await currentUser()) {
@@ -33,5 +35,9 @@ async function Form({ searchParams }: Pick<PageProps<"/login">, "searchParams">)
   }
   // Arriving from the page that set a new password.
   const notice = reset === "done" ? "Your password has been changed. Log in with the new one." : undefined;
-  return <AuthForm mode="login" next={destination} notice={notice} />;
+  // Arriving from a sign-in with Google that did not work.
+  const problem = typeof google === "string" ? googleProblem(google) : undefined;
+  return (
+    <AuthForm mode="login" next={destination} notice={notice} problem={problem} google={googleSettings() !== null} />
+  );
 }
