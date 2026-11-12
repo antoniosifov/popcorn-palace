@@ -34,6 +34,18 @@ test("a film has a page of its own, with its showtimes and the rest of the progr
   await expect(page.getByRole("heading", { level: 1 })).not.toHaveText(title);
 });
 
+test("every page ends with a way to what the site keeps about its visitors", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByRole("contentinfo").getByRole("link", { name: "What this site keeps" }).click();
+
+  await expect(page).toHaveURL("/privacy");
+  await expect(page.getByRole("heading", { level: 1, name: "Privacy" })).toBeVisible();
+  // The page says the things a visitor would ask: what, where to, and how to have it deleted.
+  for (const part of ["What is kept", "Where it goes", "Cookies", "How long", "Having it deleted"]) {
+    await expect(page.getByRole("heading", { level: 2, name: part })).toBeVisible();
+  }
+});
+
 test("a page that needs an account sends a visitor to log in and then back to it", async ({ page }) => {
   const customer = newCustomer();
   await register(page, customer);

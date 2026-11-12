@@ -53,6 +53,11 @@ export function SiteFooter() {
               </a>
             </Credit>
             <Credit role="Payments">Sandbox, no real money</Credit>
+            <Credit role="Privacy">
+              <Link href="/privacy" className="credit-link">
+                What this site keeps
+              </Link>
+            </Credit>
             <Credit role="Made by">
               <a href="https://antoniosifov.com" className="credit-link" rel="noreferrer">
                 Anton Iosifov
