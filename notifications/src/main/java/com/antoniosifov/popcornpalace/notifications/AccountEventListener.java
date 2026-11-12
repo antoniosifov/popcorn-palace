@@ -13,7 +13,8 @@ import tools.jackson.databind.json.JsonMapper;
 import java.time.Clock;
 
 /**
- * Turns account events into emails: for now, the link that sets a new password.
+ * Turns account events into emails: the link that sets a new password, and
+ * the last message to an account that its owner has deleted.
  *
  * <p>The same order of steps as for bookings, for the same reason: the email
  * first, the event recorded as handled second, so a crash in between repeats
@@ -24,6 +25,8 @@ import java.time.Clock;
  * its content, and an event that cannot be turned into an email is dropped
  * instead of parked in a dead-letter topic (see {@link KafkaErrorHandling}).
  * A link that has already expired by the time it gets here is not sent at all.
+ * The farewell to a deleted account is treated the same way, because of whose
+ * email it carries: somebody who has asked for it to be forgotten.
  */
 @Component
 public class AccountEventListener
@@ -35,6 +38,7 @@ public class AccountEventListener
     private final AccountMailer mailer;
     private final Clock clock;
     private final Counter resetEmails;
+    private final Counter farewellEmails;
     private final Counter duplicates;
 
     public AccountEventListener(JsonMapper jsonMapper, ProcessedEvents processedEvents, AccountMailer mailer,
@@ -44,12 +48,18 @@ public class AccountEventListener
         this.processedEvents = processedEvents;
         this.mailer = mailer;
         this.clock = clock;
-        resetEmails = Counter.builder("popcorn.notifications.emails")
-                .description("Emails sent, by the event that caused them")
-                .tag("type", AccountEvent.PASSWORD_RESET_REQUESTED)
-                .register(registry);
+        resetEmails = emails(registry, AccountEvent.PASSWORD_RESET_REQUESTED);
+        farewellEmails = emails(registry, AccountEvent.ACCOUNT_DELETED);
         duplicates = Counter.builder("popcorn.notifications.duplicates")
                 .description("Events delivered again that had already been handled")
+                .register(registry);
+    }
+
+    private static Counter emails(MeterRegistry registry, String type)
+    {
+        return Counter.builder("popcorn.notifications.emails")
+                .description("Emails sent, by the event that caused them")
+                .tag("type", type)
                 .register(registry);
     }
 
@@ -65,23 +75,33 @@ public class AccountEventListener
             return;
         }
 
-        if (!AccountEvent.PASSWORD_RESET_REQUESTED.equals(event.type())) {
-            // A type this service does not know about yet. Not an error.
-            log.debug("Ignoring event {} of unhandled type {}", event.eventId(), event.type());
-            return;
+        switch (event.type()) {
+            case AccountEvent.PASSWORD_RESET_REQUESTED -> sendResetLink(event);
+            case AccountEvent.ACCOUNT_DELETED -> {
+                mailer.sendFarewell(event);
+                farewellEmails.increment();
+                log.info("Sent {} email (event {})", event.type(), event.eventId());
+            }
+            default -> {
+                // A type this service does not know about yet. Not an error.
+                log.debug("Ignoring event {} of unhandled type {}", event.eventId(), event.type());
+                return;
+            }
         }
+        processedEvents.add(event.eventId());
+    }
 
+    private void sendResetLink(AccountEvent event)
+    {
         if (event.passwordReset().expiresAt().isBefore(clock.instant())) {
             // Held up for longer than the link lives (this service was down, say). An
             // email with a dead link helps nobody; the customer will have asked again.
             log.info("Not sending the link of event {}: it has expired on the way", event.eventId());
+            return;
         }
-        else {
-            mailer.sendPasswordReset(event);
-            resetEmails.increment();
-            log.info("Sent {} email (event {})", event.type(), event.eventId());
-        }
-        processedEvents.add(event.eventId());
+        mailer.sendPasswordReset(event);
+        resetEmails.increment();
+        log.info("Sent {} email (event {})", event.type(), event.eventId());
     }
 
     private AccountEvent parse(ConsumerRecord<String, String> message)

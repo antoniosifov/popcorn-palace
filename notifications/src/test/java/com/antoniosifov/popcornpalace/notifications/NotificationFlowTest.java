@@ -34,8 +34,10 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -289,6 +291,44 @@ class NotificationFlowTest
         assertThat(awaitEmails(1).get(0).getAllRecipients()[0]).hasToString("marker@example.com");
     }
 
+    @DisplayName("A deleted account gets one last email that says what happened to its bookings")
+    @Test
+    void sendsTheFarewell() throws Exception
+    {
+        publishAccountDeleted(UUID.randomUUID(), "anna@example.com", 2);
+
+        MimeMessage email = awaitEmails(1).get(0);
+        assertThat(email.getAllRecipients()[0]).hasToString("anna@example.com");
+        assertThat(email.getSubject()).isEqualTo("Your Popcorn Palace account has been deleted");
+        assertThat(GreenMailUtil.getBody(email))
+                .contains("Hi Anna,")
+                .contains("Your Popcorn Palace account has been deleted")
+                .contains("2 bookings for showtimes that had not begun were cancelled and refunded")
+                .contains("This is the last email you will get from us.")
+                .contains("If it was not you");
+    }
+
+    @DisplayName("The farewell to an account that had nothing booked does not talk about bookings, and is sent once")
+    @Test
+    void theFarewellIsSentOnceAndFitsTheAccount() throws Exception
+    {
+        UUID eventId = UUID.randomUUID();
+
+        publishAccountDeleted(eventId, "anna@example.com", 0);
+        publishAccountDeleted(eventId, "anna@example.com", 0);
+        // The topic has one partition, so this one is read after both of the above.
+        publishAccountDeleted(UUID.randomUUID(), "marker@example.com", 1);
+
+        // The mail server does not hand its messages back in the order they came.
+        Map<String, String> bodies = new HashMap<>();
+        for (MimeMessage email : awaitEmails(2)) {
+            bodies.put(email.getAllRecipients()[0].toString(), GreenMailUtil.getBody(email));
+        }
+        assertThat(bodies).containsOnlyKeys("anna@example.com", "marker@example.com");
+        assertThat(bodies.get("anna@example.com")).doesNotContain("booking");
+        assertThat(bodies.get("marker@example.com")).contains("One booking for a showtime that had not begun");
+    }
+
     @DisplayName("A reset event that cannot become an email is dropped, not parked: its link is in no dead-letter topic")
     @Test
     void dropsAResetEventInsteadOfParkingIt() throws Exception
@@ -371,6 +411,22 @@ class NotificationFlowTest
                   "somethingAddedLater": {"ignored": true}
                 }
                 """.formatted(eventId, Instant.now(), accountId, email, link, expiresAt)).get();
+    }
+
+    /** The last event of an account, as the booking API publishes it. */
+    private void publishAccountDeleted(UUID eventId, String email, int cancelledBookings) throws Exception
+    {
+        kafka.send(ACCOUNT_TOPIC, eventId.toString(), """
+                {
+                  "eventId": "%s",
+                  "type": "AccountDeleted",
+                  "version": 1,
+                  "occurredAt": "%s",
+                  "account": {"id": "%s", "email": "%s", "displayName": "Anna"},
+                  "passwordReset": null,
+                  "deletion": {"cancelledBookings": %d}
+                }
+                """.formatted(eventId, Instant.now(), UUID.randomUUID(), email, cancelledBookings)).get();
     }
 
     private double dropped()

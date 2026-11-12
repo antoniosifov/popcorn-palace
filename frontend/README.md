@@ -18,6 +18,7 @@ The part of Popcorn Palace a customer opens in a browser: the programme, a live 
 - Pages are prerendered shells that fill in at request time; the build needs no running API
 - A forgotten password is replaced through a link sent by email, and the change logs out every other browser
 - Signing in with Google, as a round trip this server makes: the browser never sees the client secret or a token
+- An account page where its owner deletes the account, and a privacy page that says what the code does with it
 - A shared link is previewed with a picture: the site's own card, or the still of the film the link is to
 - Unit and component tests for the rules, and end-to-end tests that drive a real browser against the whole stack, down to the ticket email
 
@@ -175,7 +176,7 @@ Three values tie the way out to the way back, and none of them trusts the browse
 
 Every way it can fail ends on the login form with one sentence. The reason travels there as a code in the address and is looked up in a fixed list, so an address somebody writes cannot put words onto the page.
 
-The end-to-end tests cannot use Google itself, so they use a stand-in ([`e2e/fake-google.mjs`](e2e/fake-google.mjs), started by `compose.e2e.yml`): it sends the browser back with a code, exchanges it for a signed ID token and publishes its keys, and is as strict as Google about the client id, the redirect address, the secret and PKCE. CI runs with it; locally those six tests are skipped unless the stack was started with `compose.e2e.yml`.
+The end-to-end tests cannot use Google itself, so they use a stand-in ([`e2e/fake-google.mjs`](e2e/fake-google.mjs), started by `compose.e2e.yml`): it sends the browser back with a code, exchanges it for a signed ID token and publishes its keys, and is as strict as Google about the client id, the redirect address, the secret and PKCE. CI runs with it; locally those seven tests are skipped unless the stack was started with `compose.e2e.yml`.
 
 ## Tests
 
@@ -187,21 +188,22 @@ npm run typecheck
 npm run format:check
 ```
 
-**Unit and component tests** (118) cover the rules without a browser or a server:
+**Unit and component tests** (121) cover the rules without a browser or a server:
 
-| What                                                                                                       | Where                                                                      |
-| ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Times on the cinema's clock, days that are 23 hours long, times that do not exist                          | [`lib/time.test.ts`](src/lib/time.test.ts)                                 |
-| Seat events, picking, the limit of eight, sums in whole cents                                              | [`lib/seatmap.test.ts`](src/lib/seatmap.test.ts)                           |
-| Every step from picking to paying, including events that overtake answers                                  | [`lib/booking-state.test.ts`](src/lib/booking-state.test.ts)               |
-| The API client: tokens, problems, an unreachable API                                                       | [`lib/api/client.test.ts`](src/lib/api/client.test.ts)                     |
-| Error messages, idempotency keys, safe redirects, booking status                                           | [`lib/errors.test.ts`](src/lib/errors.test.ts)                             |
-| Pictures at every width, addresses that are refused, the trailer's id                                      | [`lib/artwork.test.ts`](src/lib/artwork.test.ts)                           |
-| The address the site gives for itself, the description in a link's preview                                 | [`lib/site.test.ts`](src/lib/site.test.ts)                                 |
-| A sign-in with Google: the attempt and its cookie, the address the browser is sent to, exchanging the code | [`lib/google.test.ts`](src/lib/google.test.ts)                             |
-| The seat picker as a customer uses it, with the stream and the server replaced                             | [`components/seat-booking.test.tsx`](src/components/seat-booking.test.tsx) |
+| What                                                                                                       | Where                                                                          |
+| ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Times on the cinema's clock, days that are 23 hours long, times that do not exist                          | [`lib/time.test.ts`](src/lib/time.test.ts)                                     |
+| Seat events, picking, the limit of eight, sums in whole cents                                              | [`lib/seatmap.test.ts`](src/lib/seatmap.test.ts)                               |
+| Every step from picking to paying, including events that overtake answers                                  | [`lib/booking-state.test.ts`](src/lib/booking-state.test.ts)                   |
+| The API client: tokens, problems, an unreachable API                                                       | [`lib/api/client.test.ts`](src/lib/api/client.test.ts)                         |
+| Error messages, idempotency keys, safe redirects, booking status                                           | [`lib/errors.test.ts`](src/lib/errors.test.ts)                                 |
+| Pictures at every width, addresses that are refused, the trailer's id                                      | [`lib/artwork.test.ts`](src/lib/artwork.test.ts)                               |
+| The address the site gives for itself, the description in a link's preview                                 | [`lib/site.test.ts`](src/lib/site.test.ts)                                     |
+| A sign-in with Google: the attempt and its cookie, the address the browser is sent to, exchanging the code | [`lib/google.test.ts`](src/lib/google.test.ts)                                 |
+| The seat picker as a customer uses it, with the stream and the server replaced                             | [`components/seat-booking.test.tsx`](src/components/seat-booking.test.tsx)     |
+| Deleting the account: the question before it, the password only where there is one                         | [`components/delete-account.test.tsx`](src/components/delete-account.test.tsx) |
 
-**End-to-end tests** (23) drive Chromium against the stack that `docker compose` starts, and run in CI on every pull request:
+**End-to-end tests** (28) drive Chromium against the stack that `docker compose` starts, and run in CI on every pull request:
 
 - a visitor opens a film's page from the programme and goes on from it to another film;
 - a customer registers, picks seats, pays, sees the ticket, and the email arrives (browser to API to Kafka to the notifications service to the mail catcher);
@@ -211,7 +213,11 @@ npm run format:check
 - cancelling refunds, emails, and puts the seat back on sale;
 - a hold survives leaving the page;
 - pages that need an account send a visitor to log in and back; the session cookie is `HttpOnly`; the back office does not exist for a customer;
-- an administrator adds a movie, schedules it, is refused an overlapping showtime with the form left as typed, and removes both.
+- an administrator adds a movie, schedules it, is refused an overlapping showtime with the form left as typed, and removes both;
+- a forgotten password is replaced through the emailed link, which works once, and the change logs out another browser;
+- signing in with Google, against a stand-in for Google: a first sign-in, a second one, an unconfirmed address, an answer that belongs to no sign-in;
+- a customer deletes the account: a wrong password deletes nothing, the right one refunds the ticket, frees the seat, sends the farewell and frees the email; another browser of the account is logged out; an account opened with Google is deleted without a password;
+- the privacy page is reachable from every page's footer.
 
 By default the tests expect the stack on its usual ports. `E2E_BASE_URL`, `E2E_MAILPIT_URL`, `E2E_ADMIN_EMAIL` and `E2E_ADMIN_PASSWORD` change that, and `PLAYWRIGHT_CHANNEL=chrome` uses an installed Chrome instead of downloading a browser. The tests register a new customer each, so raise the API's `AUTH_RATE_LIMIT` when running them repeatedly.
 
@@ -220,7 +226,7 @@ By default the tests expect the stack on its usual ports. `E2E_BASE_URL`, `E2E_M
 ```text
 src/
 ├── proxy.ts              a first check before pages that need an account
-├── app/                  routes: the programme, movies, showtimes, bookings, login, admin
+├── app/                  routes: the programme, movies, showtimes, bookings, the account, login, admin, privacy
 │   └── api/              route handlers: the live seat stream, the seat map, health
 ├── actions/              Server Actions: auth, checkout, admin
 ├── components/           the seat map and checkout, posters and stills, the trailer, forms, navigation

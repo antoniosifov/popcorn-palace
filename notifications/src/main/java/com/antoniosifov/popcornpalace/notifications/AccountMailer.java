@@ -41,4 +41,32 @@ public class AccountMailer
 
         mail.send(event.account().email(), "Set a new password for Popcorn Palace", text);
     }
+
+    /**
+     * The last message to an account its owner has deleted: what was done, in
+     * case it was done by somebody else at an open browser, and that nothing
+     * more will come.
+     */
+    public void sendFarewell(AccountEvent event)
+    {
+        int cancelled = event.cancelledBookings();
+        StringBuilder text = new StringBuilder();
+        text.append(Mail.greeting(event.account().displayName())).append("\n\n");
+        text.append("Your Popcorn Palace account has been deleted, as asked from inside the account.\n\n");
+        text.append("Your email address, your name and your way of signing in are erased. ");
+        if (cancelled == 1) {
+            text.append("One booking for a showtime that had not begun was cancelled and refunded; "
+                    + "a separate email confirms it. ");
+        }
+        else if (cancelled > 1) {
+            text.append(cancelled).append(" bookings for showtimes that had not begun were cancelled and refunded; "
+                    + "a separate email confirms each. ");
+        }
+        text.append("This is the last email you will get from us.\n\n");
+        text.append("If it was not you: a deleted account cannot be brought back, "
+                + "but the address is free and you can create a new account with it at any time.\n\n");
+        text.append("Popcorn Palace\n");
+
+        mail.send(event.account().email(), "Your Popcorn Palace account has been deleted", text.toString());
+    }
 }

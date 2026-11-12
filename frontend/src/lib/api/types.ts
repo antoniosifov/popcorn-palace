@@ -21,6 +21,8 @@ export type User = {
   displayName: string;
   role: Role;
   createdAt: string;
+  /** False for an account that is only ever entered through Google. */
+  hasPassword: boolean;
 };
 
 export type AuthResponse = {

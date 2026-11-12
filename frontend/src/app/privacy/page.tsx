@@ -75,20 +75,33 @@ export default function PrivacyPage() {
 
         <Part title="How long">
           <p>
-            Your account and bookings are kept until you ask for them to be deleted. A password link works for thirty
-            minutes and is stored only as a hash. Because this is a demonstration, the whole database may also be
-            emptied at any time, without notice.
+            Your account is kept until you delete it. A password link works for thirty minutes and is stored only as a
+            hash. Because this is a demonstration, the whole database may also be emptied at any time, without notice.
           </p>
         </Part>
 
         <Part title="Having it deleted">
           <p>
-            Write to Anton through{" "}
+            You can delete your account yourself, on{" "}
+            <Link href="/account" className="link">
+              its page
+            </Link>
+            . Your email address, your name, your password and the connection to Google are erased at once, every
+            browser is logged out, and one last email says it is done. Bookings for showtimes that have not begun are
+            cancelled and refunded.
+          </p>
+          <p className="mt-4">
+            What stays is the record of what was sold and refunded: bookings and payments with no name and no address on
+            them. Emails already sent stay where they were delivered, in your mailbox and in the mail service&rsquo;s
+            record of what it sent, and messages on their way between the parts of this site are gone within about two
+            weeks.
+          </p>
+          <p className="mt-4">
+            To ask what is stored about you, or to have it corrected, write to Anton through{" "}
             <a href="https://antoniosifov.com" className="link" rel="noreferrer">
               antoniosifov.com
-            </a>{" "}
-            from the email address of your account, and the account and its bookings are deleted. The same way you can
-            ask what is stored about you, or have it corrected.
+            </a>
+            .
           </p>
         </Part>
 

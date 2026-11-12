@@ -109,3 +109,30 @@ test("words written into the address do not appear on the page", async ({ page }
   await expect(alertIn(page)).toHaveCount(0);
   await expect(page.getByText("Your account was deleted")).toHaveCount(0);
 });
+
+test("an account opened with Google is deleted without a password, and Google then opens a new one", async ({
+  page,
+}) => {
+  const person = newPerson();
+  await atGoogle(person);
+  await page.goto("/login?next=%2Faccount");
+  await continueWithGoogle(page);
+  await expect(page).toHaveURL("/account");
+  await expect(page.getByRole("region", { name: "Details" })).toContainText("With Google");
+
+  // There is no password to ask for: the question alone.
+  const deletion = page.getByRole("region", { name: "Delete account" });
+  await deletion.getByRole("button", { name: "Delete account" }).click();
+  await expect(deletion.getByLabel("Your password")).toHaveCount(0);
+  await deletion.getByRole("button", { name: "Delete for good" }).click();
+  await expect(page).toHaveURL("/goodbye");
+  await expect(page.getByRole("link", { name: "Log in" })).toBeVisible();
+
+  // Google no longer leads to the old account: the same person starts from nothing.
+  await atGoogle(person);
+  await page.goto("/login?next=%2Fbookings");
+  await continueWithGoogle(page);
+  await expect(page).toHaveURL("/bookings");
+  await expect(page.getByText("No tickets for upcoming showtimes.")).toBeVisible();
+  await expect(alertIn(page)).toHaveCount(0);
+});

@@ -30,8 +30,9 @@ function isCurrent(pathname: string, href: string): boolean {
 }
 
 /**
- * The links of the top bar and the account at its right end. The current
- * place is marked by brightness alone. On a phone the links fold into a sheet
+ * The links of the top bar and the account at its right end: the name of
+ * whoever is logged in leads to their account. The current place is marked by
+ * brightness alone. On a phone the links fold into a sheet
  * behind a menu button.
  */
 export function Nav({ user }: { user: NavUser | null }) {
@@ -59,7 +60,14 @@ export function Nav({ user }: { user: NavUser | null }) {
       <div className="hidden items-center gap-4 md:flex">
         {user ? (
           <>
-            <span className="max-w-[18ch] truncate text-label text-muted">{user.displayName}</span>
+            <Link
+              href="/account"
+              aria-current={isCurrent(pathname, "/account") ? "page" : undefined}
+              title="Account"
+              className="max-w-[18ch] truncate text-label font-medium text-muted transition-colors duration-150 hover:text-ink aria-[current=page]:text-ink"
+            >
+              {user.displayName}
+            </Link>
             <form action={logout}>
               <button type="submit" className="btn btn-secondary">
                 Log out
@@ -112,6 +120,9 @@ export function Nav({ user }: { user: NavUser | null }) {
               {user ? (
                 <>
                   <p className="text-muted">Logged in as {user.displayName}</p>
+                  <Link href="/account" className="btn btn-secondary btn-large" onClick={() => setOpenOn(null)}>
+                    Account
+                  </Link>
                   <form action={logout}>
                     <button type="submit" className="btn btn-secondary btn-large w-full">
                       Log out

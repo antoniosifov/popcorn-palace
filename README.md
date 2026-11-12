@@ -125,6 +125,7 @@ The parts that took thought, and where each is explained and tested.
 | The same stack on a laptop and on a server | One compose file with a production layer over it: images tagged by commit, nothing reachable but the web server, secrets without defaults, and a release that is one script run by a key that can do nothing else | [Running it on a server](deploy/README.md) |
 | A secret that has to travel through an event | A password reset link goes out the way tickets do, through the outbox and Kafka, but is kept in neither: only its hash is stored, the outbox row is deleted on delivery, the topic keeps an hour, and a failed event is dropped instead of parked. The new password ends the sessions that were open | [A forgotten password](backend/README.md#a-forgotten-password) |
 | Somebody registers with your email before you do | Registration asks for no proof of the email, so an account can be opened in somebody else's name. When the owner later signs in with Google, the account is theirs, and a password set while the email was unproven does not survive it. The Google ID token itself is checked in full, audience included | [Signing in with Google](backend/README.md#signing-in-with-google) |
+| Deleting an account that has bought things | The owner deletes it; what says whose it was is erased and the email is free at once, while bookings and payments stay as a record that belongs to nobody. Tickets that could still be used are cancelled and refunded in the same transaction, a purchase racing the deletion either lands before it and is cancelled or is refused and refunded, and the email is also removed from where it was copied to: the events waiting in the outbox | [Deleting an account](backend/README.md#deleting-an-account) |
 | Rules that hold when the code is wrong | Constraints in the database, not only checks in the services, and Flyway migrations that own the schema | [Business rules](backend/README.md#business-rules-and-where-they-are-enforced) |
 
 ## Watching it work
@@ -154,10 +155,10 @@ Every API response carries the trace id in its `X-Trace-Id` header, and the web 
 
 | Suite | Count | What it runs against |
 | --- | --- | --- |
-| API | 263 | The application over HTTP with real PostgreSQL, Redis and Kafka (Testcontainers) |
-| Notifications service | 14 | Real Kafka and Redis, an in-memory mail server |
-| Web client, unit and component | 118 | The rules of the seat map, the checkout, time zones, pictures and errors, without a browser |
-| End to end | 23 | A real browser against the whole stack: a booking has to arrive as an email |
+| API | 280 | The application over HTTP with real PostgreSQL, Redis and Kafka (Testcontainers) |
+| Notifications service | 16 | Real Kafka and Redis, an in-memory mail server |
+| Web client, unit and component | 121 | The rules of the seat map, the checkout, time zones, pictures and errors, without a browser |
+| End to end | 28 | A real browser against the whole stack: a booking has to arrive as an email |
 
 All of it runs in CI on every pull request. The end-to-end job starts the stack with `docker compose`, the same way the section above does.
 
@@ -225,3 +226,5 @@ docs/            the pictures on this page
 This repository combines `antoniosifov/popcorn-palace` and `antoniosifov/popcorn-palace-frontend`; both histories are preserved through the import merge. The static pages that `frontend/` held before the Next.js client are in that history as well.
 
 Built by Anton Iosifov: [portfolio](https://antoniosifov.com) · [LinkedIn](https://www.linkedin.com/in/anton-iosifov/)
+
+The code is under the [MIT licence](LICENSE). Film information and artwork belong to their owners and come from TMDB; they are not part of this repository.
