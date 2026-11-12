@@ -35,6 +35,8 @@ const MESSAGES: Record<string, string> = {
   RESET_LINK_INVALID: "This link has expired or has already been used.",
   GOOGLE_SIGN_IN_FAILED: "Signing in with Google did not work. Try again.",
   GOOGLE_EMAIL_UNVERIFIED: "Google has not confirmed this email address yet. Confirm it with Google and try again.",
+  PASSWORD_INCORRECT: "That is not the password of this account.",
+  ACCOUNT_NOT_DELETABLE: "An administrator account cannot be deleted.",
   TOO_MANY_REQUESTS: "Too many attempts. Wait a minute and try again.",
   VALIDATION_FAILED: "Some fields need another look.",
   SEAT_ALREADY_HELD: "Somebody else is booking some of these seats right now. Pick other seats.",

@@ -7,9 +7,9 @@ import { api } from "@/lib/api/client";
 import type { AuthResponse } from "@/lib/api/types";
 import { safeNextPath } from "@/lib/paths";
 import type { ActionError } from "@/lib/errors";
-import { endSession, startSession } from "@/lib/session";
+import { endSession, sessionToken, startSession } from "@/lib/session";
 
-import { describeFailure, text } from "./support";
+import { describeFailure, text, UNAUTHENTICATED } from "./support";
 
 /** What the login and registration forms get back when the attempt failed. */
 export type AuthFormState = {
@@ -107,6 +107,35 @@ export async function setNewPassword(_previous: NewPasswordState, form: FormData
   // The API has ended every session of the account; this browser's is one of them, if it had one.
   await endSession();
   redirect("/login?reset=done");
+}
+
+/** What the form that deletes the account gets back when it did not happen. */
+export type DeleteAccountState = { error?: ActionError };
+
+/**
+ * Deletes the account of whoever is logged in, for good. The API asks for the
+ * password of an account that has one; one opened with Google sends none.
+ */
+export async function deleteAccount(_previous: DeleteAccountState, form: FormData): Promise<DeleteAccountState> {
+  const token = await sessionToken();
+  if (!token) {
+    return { error: UNAUTHENTICATED };
+  }
+  const password = String(form.get("password") ?? "");
+  try {
+    await api<void>("/users/me/delete", {
+      method: "POST",
+      token,
+      body: password ? { password } : {},
+      // Wrong passwords here count against the same limit as wrong passwords at login.
+      headers: await forwardedFor(),
+    });
+  } catch (error) {
+    return { error: await describeFailure(error) };
+  }
+  // The API has ended every session of the account; this is the cookie of one of them.
+  await endSession();
+  redirect("/goodbye");
 }
 
 export async function logout(): Promise<void> {
