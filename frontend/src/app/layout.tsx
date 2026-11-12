@@ -7,6 +7,7 @@ import { Suspense } from "react";
 import { Wordmark } from "@/components/brand";
 import { Nav } from "@/components/nav";
 import { Reveals } from "@/components/reveals";
+import { SiteFooter } from "@/components/site-footer";
 import { currentUser } from "@/lib/auth";
 import { siteOrigin } from "@/lib/site";
 
@@ -93,31 +94,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <main id="main" className="flex-1">
           {children}
         </main>
-        <footer className="mt-32 flex-none bg-surface md:mt-48">
-          <div className="column pb-10 pt-16 md:pt-24">
-            <p className="display rise whitespace-nowrap text-[clamp(2.25rem,11vw,12rem)] leading-[0.9]">
-              Popcorn Palace
-            </p>
-            <div className="mt-12 grid gap-x-10 gap-y-8 md:mt-16 md:grid-cols-[minmax(0,1fr)_auto]">
-              <p className="max-w-[52ch] text-muted">
-                A portfolio project. Payments run in a sandbox: no real money moves and no card details are asked for.
-                Film information and artwork come from TMDB; this product uses the TMDB API but is not endorsed or
-                certified by TMDB.
-              </p>
-              <nav aria-label="Footer" className="flex flex-wrap gap-x-7 gap-y-2 md:justify-end">
-                <Link href="/" className="link">
-                  Now showing
-                </Link>
-                <Link href="/bookings" className="link">
-                  My bookings
-                </Link>
-                <a href="https://www.themoviedb.org" className="link" rel="noreferrer">
-                  TMDB
-                </a>
-              </nav>
-            </div>
-          </div>
-        </footer>
+        <SiteFooter />
       </body>
     </html>
   );

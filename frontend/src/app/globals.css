@@ -442,6 +442,76 @@
     letter-spacing: 0;
   }
 
+  /*
+   * The footer's back row: the seats of the mark at the size of the seat map,
+   * from one edge of the page to the other. A phone has room for half of them.
+   */
+  .back-row {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .back-row span {
+    aspect-ratio: 1;
+    border-radius: 22%;
+    background: var(--color-raised);
+  }
+  .back-row span:nth-child(n + 13) {
+    display: none;
+  }
+  .back-row .is-yours {
+    background: var(--color-accent);
+  }
+
+  /*
+   * Credits, as a film sets them: the role ends at an axis, the name begins
+   * at it. The roles are in the text face and quiet; the names are announced.
+   */
+  .credits {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
+    column-gap: 20px;
+    row-gap: 14px;
+    align-content: start;
+    align-items: baseline;
+  }
+  .credits dt {
+    text-align: right;
+    color: var(--color-muted);
+  }
+  .credits dd {
+    font-family: var(--font-display);
+    font-size: var(--text-section);
+    line-height: var(--text-section--line-height);
+  }
+  .credit-link {
+    text-underline-offset: 4px;
+    text-decoration-thickness: 1px;
+    transition: color 150ms ease;
+  }
+  .credit-link:hover {
+    color: var(--color-accent-strong);
+    text-decoration: underline;
+  }
+
+  @media (min-width: 768px) {
+    .back-row {
+      grid-template-columns: repeat(24, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .back-row span:nth-child(n + 13) {
+      display: block;
+    }
+    .credits {
+      column-gap: 28px;
+      row-gap: 16px;
+    }
+    .credits dd {
+      font-size: 1.25rem;
+      line-height: 1.75rem;
+    }
+  }
+
   /* The trailer, played over the page it was asked for on. */
   .trailer {
     width: min(1120px, calc(100vw - 32px), calc((100svh - 128px) * 16 / 9));
