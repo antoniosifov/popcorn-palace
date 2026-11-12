@@ -11,7 +11,9 @@ import java.util.UUID;
  *
  * <p>{@link PasswordReset#url} is a secret: it lets whoever has it set the
  * account's password. This service puts it into one email and nowhere else,
- * not into a log line and not into the dead-letter topic.
+ * not into a log line and not into the dead-letter topic. The same care goes
+ * for {@link #ACCOUNT_DELETED}: its email belongs to somebody who has just
+ * asked to be forgotten, so it is used for one message and kept nowhere.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record AccountEvent(
@@ -19,10 +21,12 @@ public record AccountEvent(
         String type,
         Instant occurredAt,
         Account account,
-        PasswordReset passwordReset
+        PasswordReset passwordReset,
+        Deletion deletion
 )
 {
     public static final String PASSWORD_RESET_REQUESTED = "PasswordResetRequested";
+    public static final String ACCOUNT_DELETED = "AccountDeleted";
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Account(String email, String displayName)
@@ -32,6 +36,18 @@ public record AccountEvent(
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record PasswordReset(String url, Instant expiresAt)
     {
+    }
+
+    /** @param cancelledBookings how many upcoming bookings were cancelled and refunded with the account */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Deletion(int cancelledBookings)
+    {
+    }
+
+    /** How many bookings went with the account; none if the event does not say. */
+    public int cancelledBookings()
+    {
+        return deletion == null ? 0 : Math.max(0, deletion.cancelledBookings());
     }
 
     /**
