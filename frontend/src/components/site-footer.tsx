@@ -1,26 +1,42 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { cache, Suspense, type ReactNode } from "react";
+
+import { atWidth, safePicture, srcSet } from "@/lib/artwork";
+import { listMovies } from "@/lib/api/catalog";
+import type { Movie } from "@/lib/api/types";
 
 /**
- * The end of every page, set the way a film ends: the back row of the hall,
- * the credits, and the name of the house once more.
+ * The end of every page, set the way a film ends: one more still, the
+ * credits, and the name of the house.
  *
- * The credits are the practical facts (where the programme is, where the
- * tickets are, whose pictures these are, who made this), each as a role and a
- * name on either side of one axis, the way a credit roll sets them.
+ * It is the first screen in reverse. There a still fills the screen and
+ * dissolves into the dark of the page below it; here the dark of the page
+ * gives way to a still, with no edge between them, and what is said lies along
+ * its bottom. The credits are the practical facts (where the programme is,
+ * where the tickets are, whose pictures these are, who made this), each as a
+ * role and a name on either side of one axis, the way a credit roll sets them.
+ *
+ * The still is of a film that is on the programme, so it changes with the
+ * programme. Without one (an empty catalogue, an API that does not answer)
+ * the footer is its words alone, as the first screen is.
  */
 export function SiteFooter() {
   return (
-    <footer className="mt-32 flex-none bg-surface md:mt-48">
-      <div className="column pb-10 pt-14 md:pb-12 md:pt-20">
-        <BackRow />
+    <footer className="closing mt-20 flex-none md:mt-28">
+      <Suspense fallback={null}>
+        <ClosingStill />
+      </Suspense>
 
-        <div className="mt-14 grid gap-x-16 gap-y-12 md:mt-24 lg:grid-cols-2">
+      <div className="column relative pb-10 pt-16 md:pb-12 md:pt-24">
+        <div className="grid gap-x-16 gap-y-12 lg:grid-cols-2">
           <p className="copy rise max-w-[20ch] text-[1.5rem] leading-[1.25] lg:text-[2rem] lg:leading-[1.2]">
             The lights come up. The next showing is already on sale.
           </p>
 
           <dl className="credits rise max-w-[32rem] lg:max-w-none">
+            <Suspense fallback={null}>
+              <PictureCredit />
+            </Suspense>
             <Credit role="Programme">
               <Link href="/" className="credit-link">
                 Now showing
@@ -51,7 +67,7 @@ export function SiteFooter() {
         </div>
 
         {/* The name at the width of the page, to the letter: its size is a share of the width it is set in. */}
-        <div className="@container mt-16 md:mt-28">
+        <div className="@container mt-16 md:mt-24">
           <p className="display rise whitespace-nowrap text-[14.7cqw] leading-[0.86] tracking-[-0.03em]">
             Popcorn Palace
           </p>
@@ -75,22 +91,67 @@ function Credit({ role, children }: { role: string; children: ReactNode }) {
   );
 }
 
-/** How many seats the back row has on a wide screen; a phone shows the first half of them. */
-const SEATS = 24;
-/** The one that is yours, as on the seat map and in the mark. */
-const YOURS = 7;
-
 /**
- * The back row of the hall, across the whole page, with one seat lit. It is
- * the mark of the site at the size of the seat map, not a divider: a picture,
- * hidden from screen readers.
+ * The film whose still closes the page: one that is in cinemas and has a
+ * still, the second most popular of them. The most popular one is usually
+ * what the first screen opened with, and a page should not end on the picture
+ * it began with.
+ *
+ * The footer is an ending, not the page: if the catalogue cannot be read it
+ * goes without a picture instead of failing.
  */
-function BackRow() {
+const closingFilm = cache(async (): Promise<Movie | null> => {
+  let movies: Movie[];
+  try {
+    movies = await listMovies();
+  } catch {
+    return null;
+  }
+  const withStills = movies
+    .filter((movie) => safePicture(movie.backdropUrl))
+    .sort(
+      (a, b) => Number(b.inCinemas) - Number(a.inCinemas) || (b.popularity ?? 0) - (a.popularity ?? 0) || a.id - b.id,
+    );
+  return withStills[1] ?? withStills[0] ?? null;
+});
+
+async function ClosingStill() {
+  const film = await closingFilm();
+  const picture = safePicture(film?.backdropUrl);
+  if (!film || !picture) {
+    return null;
+  }
   return (
-    <div className="back-row rise" aria-hidden="true">
-      {Array.from({ length: SEATS }, (_, seat) => (
-        <span key={seat} className={seat === YOURS ? "is-yours" : undefined} />
-      ))}
-    </div>
+    <>
+      {/* Sized and served by TMDB's picture servers; see lib/artwork.ts. Far below the first screen, so fetched late. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        className="closing-picture"
+        src={atWidth(picture, 1280)}
+        srcSet={srcSet(picture, "backdrop")}
+        sizes="100vw"
+        alt={`A still from ${film.title}`}
+        width={1280}
+        height={720}
+        loading="lazy"
+        decoding="async"
+      />
+      <div className="closing-scrim" aria-hidden="true" />
+    </>
+  );
+}
+
+/** Says which film the still is from, in the credits, and leads to it. */
+async function PictureCredit() {
+  const film = await closingFilm();
+  if (!film || !safePicture(film.backdropUrl)) {
+    return null;
+  }
+  return (
+    <Credit role="In the picture">
+      <Link href={`/movies/${film.id}`} className="credit-link">
+        {film.title}
+      </Link>
+    </Credit>
   );
 }

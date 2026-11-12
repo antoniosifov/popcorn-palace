@@ -443,24 +443,50 @@
   }
 
   /*
-   * The footer's back row: the seats of the mark at the size of the seat map,
-   * from one edge of the page to the other. A phone has room for half of them.
+   * The last screen: the first one in reverse. The dark of the page gives way
+   * to a still, with no edge between them, and what is said lies along the
+   * bottom of it. Without a still it is only as tall as its words.
    */
-  .back-row {
-    display: grid;
-    grid-template-columns: repeat(12, minmax(0, 1fr));
-    gap: 6px;
+  .closing {
+    position: relative;
+    overflow: hidden;
+    background: var(--color-ground);
   }
-  .back-row span {
-    aspect-ratio: 1;
-    border-radius: 22%;
-    background: var(--color-raised);
+  /* Room for the still to be seen above the words, once there is one. */
+  .closing:has(.closing-picture) {
+    padding-top: min(46svh, 420px);
   }
-  .back-row span:nth-child(n + 13) {
-    display: none;
+  .closing-picture {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 22%;
   }
-  .back-row .is-yours {
-    background: var(--color-accent);
+  /*
+   * The same neutral scrim as on the first screen, turned over: the top of
+   * the still comes out of the page's own dark, the bottom is dark enough to
+   * read on.
+   */
+  .closing-scrim {
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(
+        to bottom,
+        rgb(17 17 17 / 1) 0,
+        rgb(17 17 17 / 0.8) 8%,
+        rgb(17 17 17 / 0.4) 20%,
+        rgb(17 17 17 / 0) 36%
+      ),
+      linear-gradient(
+        to top,
+        rgb(17 17 17 / 1) 0,
+        rgb(17 17 17 / 0.94) 46%,
+        rgb(17 17 17 / 0.62) 60%,
+        rgb(17 17 17 / 0) 80%
+      );
   }
 
   /*
@@ -495,12 +521,8 @@
   }
 
   @media (min-width: 768px) {
-    .back-row {
-      grid-template-columns: repeat(24, minmax(0, 1fr));
-      gap: 8px;
-    }
-    .back-row span:nth-child(n + 13) {
-      display: block;
+    .closing:has(.closing-picture) {
+      padding-top: min(52svh, 560px);
     }
     .credits {
       column-gap: 28px;
