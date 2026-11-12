@@ -442,6 +442,98 @@
     letter-spacing: 0;
   }
 
+  /*
+   * The last screen: the first one in reverse. The dark of the page gives way
+   * to a still, with no edge between them, and what is said lies along the
+   * bottom of it. Without a still it is only as tall as its words.
+   */
+  .closing {
+    position: relative;
+    overflow: hidden;
+    background: var(--color-ground);
+  }
+  /* Room for the still to be seen above the words, once there is one. */
+  .closing:has(.closing-picture) {
+    padding-top: min(46svh, 420px);
+  }
+  .closing-picture {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 22%;
+  }
+  /*
+   * The same neutral scrim as on the first screen, turned over: the top of
+   * the still comes out of the page's own dark, the bottom is dark enough to
+   * read on.
+   */
+  .closing-scrim {
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(
+        to bottom,
+        rgb(17 17 17 / 1) 0,
+        rgb(17 17 17 / 0.8) 8%,
+        rgb(17 17 17 / 0.4) 20%,
+        rgb(17 17 17 / 0) 36%
+      ),
+      linear-gradient(
+        to top,
+        rgb(17 17 17 / 1) 0,
+        rgb(17 17 17 / 0.94) 46%,
+        rgb(17 17 17 / 0.62) 60%,
+        rgb(17 17 17 / 0) 80%
+      );
+  }
+
+  /*
+   * Credits, as a film sets them: the role ends at an axis, the name begins
+   * at it. The roles are in the text face and quiet; the names are announced.
+   */
+  .credits {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
+    column-gap: 20px;
+    row-gap: 14px;
+    align-content: start;
+    align-items: baseline;
+  }
+  .credits dt {
+    text-align: right;
+    color: var(--color-muted);
+  }
+  .credits dd {
+    font-family: var(--font-display);
+    font-size: var(--text-section);
+    line-height: var(--text-section--line-height);
+  }
+  .credit-link {
+    text-underline-offset: 4px;
+    text-decoration-thickness: 1px;
+    transition: color 150ms ease;
+  }
+  .credit-link:hover {
+    color: var(--color-accent-strong);
+    text-decoration: underline;
+  }
+
+  @media (min-width: 768px) {
+    .closing:has(.closing-picture) {
+      padding-top: min(52svh, 560px);
+    }
+    .credits {
+      column-gap: 28px;
+      row-gap: 16px;
+    }
+    .credits dd {
+      font-size: 1.25rem;
+      line-height: 1.75rem;
+    }
+  }
+
   /* The trailer, played over the page it was asked for on. */
   .trailer {
     width: min(1120px, calc(100vw - 32px), calc((100svh - 128px) * 16 / 9));
