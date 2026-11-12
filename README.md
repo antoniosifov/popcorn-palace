@@ -225,3 +225,5 @@ docs/            the pictures on this page
 This repository combines `antoniosifov/popcorn-palace` and `antoniosifov/popcorn-palace-frontend`; both histories are preserved through the import merge. The static pages that `frontend/` held before the Next.js client are in that history as well.
 
 Built by Anton Iosifov: [portfolio](https://antoniosifov.com) · [LinkedIn](https://www.linkedin.com/in/anton-iosifov/)
+
+The code is under the [MIT licence](LICENSE). Film information and artwork belong to their owners and come from TMDB; they are not part of this repository.
