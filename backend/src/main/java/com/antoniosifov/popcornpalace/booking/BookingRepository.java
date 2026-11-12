@@ -7,7 +7,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -26,6 +28,12 @@ public interface BookingRepository extends JpaRepository<Booking, UUID>
 
     @EntityGraph(attributePaths = {"showtime.movie", "showtime.hall", "payment"})
     Page<Booking> findAllByUserId(UUID userId, Pageable pageable);
+
+    /** The bookings of an account that can still be cancelled: confirmed, for a showtime that has not begun. */
+    @EntityGraph(attributePaths = {"showtime.movie", "showtime.hall", "payment"})
+    @Query("select b from Booking b where b.userId = :userId and b.status = :status and b.showtime.startTime > :now")
+    List<Booking> findByUserIdAndStatusStartingAfter(@Param("userId") UUID userId, @Param("status") BookingStatus status,
+                                                     @Param("now") Instant now);
 
     /** Ids of every seat currently sold for a showtime; used to draw the seat map. */
     @Query("select s.seat.id from BookingSeat s where s.showtimeId = :showtimeId and s.active = true")

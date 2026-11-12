@@ -15,6 +15,7 @@ import com.antoniosifov.popcornpalace.payment.PaymentStatus;
 import com.antoniosifov.popcornpalace.security.CurrentUser;
 import com.antoniosifov.popcornpalace.showtime.Showtime;
 import com.antoniosifov.popcornpalace.showtime.ShowtimeRepository;
+import com.antoniosifov.popcornpalace.user.UserRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.context.ApplicationEventPublisher;
@@ -31,6 +32,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -48,6 +50,7 @@ public class BookingService
     private final ShowtimeRepository showtimeRepository;
     private final SeatRepository seatRepository;
     private final PaymentRepository paymentRepository;
+    private final UserRepository userRepository;
     private final PaymentService paymentService;
     private final BookingEventPublisher events;
     private final ApplicationEventPublisher applicationEvents;
@@ -58,7 +61,7 @@ public class BookingService
 
     public BookingService(BookingRepository bookingRepository, ShowtimeRepository showtimeRepository,
                           SeatRepository seatRepository, PaymentRepository paymentRepository,
-                          PaymentService paymentService, BookingEventPublisher events,
+                          UserRepository userRepository, PaymentService paymentService, BookingEventPublisher events,
                           ApplicationEventPublisher applicationEvents, MeterRegistry registry,
                           PlatformTransactionManager transactionManager, Clock clock)
     {
@@ -66,6 +69,7 @@ public class BookingService
         this.showtimeRepository = showtimeRepository;
         this.seatRepository = seatRepository;
         this.paymentRepository = paymentRepository;
+        this.userRepository = userRepository;
         this.paymentService = paymentService;
         this.events = events;
         this.applicationEvents = applicationEvents;
@@ -136,11 +140,22 @@ public class BookingService
      * could be as reliable, because another transaction can always commit right
      * after it.
      *
+     * <p>What it does check is that the account is still there, and it holds on
+     * to it until the booking is saved. Deleting an account cancels its
+     * bookings; one saved a moment after that would be a ticket nobody can see
+     * or cancel. With the account held, a deletion that started later waits for
+     * this booking and then cancels it, and one that started earlier makes this
+     * booking fail, which refunds the charge.
+     *
      * @param pricesBySeat the price to charge for each seat id
      */
     @Transactional
     public BookingResponse create(UUID userId, Long showtimeId, Map<Long, BigDecimal> pricesBySeat, UUID paymentId)
     {
+        userRepository.findByIdKeepingIt(userId)
+                .filter(account -> !account.isDeleted())
+                .orElseThrow(() -> ApiException.unauthorized(ErrorCode.UNAUTHENTICATED, "The account no longer exists"));
+
         Showtime showtime = showtimeRepository.findDetailedById(showtimeId)
                 .orElseThrow(() -> ApiException.notFound(ErrorCode.SHOWTIME_NOT_FOUND, "Showtime %d was not found".formatted(showtimeId)));
 
@@ -198,24 +213,64 @@ public class BookingService
                 throw ApiException.conflict(ErrorCode.SHOWTIME_ALREADY_STARTED,
                         "The showtime has already started; the booking can no longer be cancelled");
             }
-            booking.cancel(now);
-            events.cancelled(booking);
-            countAfterCommit(bookingsCancelled);
-            applicationEvents.publishEvent(SeatStatusChanged.available(booking.getShowtime().getId(),
-                    booking.getSeats().stream().map(seat -> seat.getSeat().getId()).toList()));
-
-            Payment payment = booking.getPayment();
-            if (payment != null && payment.getStatus() == PaymentStatus.SUCCEEDED) {
-                payment.markRefundPending(now);
-                return Optional.of(payment.getId());
-            }
-            return Optional.<UUID>empty();
+            return cancelNow(booking, now);
         });
 
         refundOwed.ifPresent(paymentId -> paymentService.refund(paymentId, Payment.BOOKING_CANCELLED));
 
         // Read again, so the response shows what the refund attempt left behind.
         return transaction.execute(status -> BookingResponse.from(requireVisible(id, user)));
+    }
+
+    /**
+     * Cancels every booking of an account that can still be cancelled, as part
+     * of the caller's transaction: the account is being deleted, and either all
+     * of that happens or none of it.
+     *
+     * <p>The refunds are not made here, for the reason given at {@link #cancel}:
+     * they are recorded as owed, and the caller makes them once its transaction
+     * has committed. One that fails then is retried by the reconciliation job.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public CancelledBookings cancelUpcomingOf(UUID userId)
+    {
+        Instant now = now();
+        List<Booking> upcoming = bookingRepository.findByUserIdAndStatusStartingAfter(userId, BookingStatus.CONFIRMED, now);
+        List<UUID> refundsOwed = new ArrayList<>();
+        for (Booking booking : upcoming) {
+            cancelNow(booking, now).ifPresent(refundsOwed::add);
+        }
+        return new CancelledBookings(upcoming.size(), refundsOwed);
+    }
+
+    /**
+     * @param count       how many bookings were cancelled
+     * @param refundsOwed the payments to refund once the cancellation has committed
+     */
+    public record CancelledBookings(int count, List<UUID> refundsOwed)
+    {
+    }
+
+    /**
+     * The cancellation itself, inside a transaction: the seats go back on sale,
+     * the event is queued, and the payment is marked as owed a refund.
+     *
+     * @return the payment to refund after the commit, if the booking was paid for
+     */
+    private Optional<UUID> cancelNow(Booking booking, Instant now)
+    {
+        booking.cancel(now);
+        events.cancelled(booking);
+        countAfterCommit(bookingsCancelled);
+        applicationEvents.publishEvent(SeatStatusChanged.available(booking.getShowtime().getId(),
+                booking.getSeats().stream().map(seat -> seat.getSeat().getId()).toList()));
+
+        Payment payment = booking.getPayment();
+        if (payment != null && payment.getStatus() == PaymentStatus.SUCCEEDED) {
+            payment.markRefundPending(now);
+            return Optional.of(payment.getId());
+        }
+        return Optional.empty();
     }
 
     private Booking requireVisible(UUID id, CurrentUser user)

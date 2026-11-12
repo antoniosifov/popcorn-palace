@@ -1,0 +1,12 @@
+-- An account can be deleted by its owner.
+--
+-- The row itself stays: bookings and payments point at it, and a cinema keeps
+-- the record of what it sold and refunded. What goes is everything that says
+-- whose row it was. The email becomes 'deleted-<id>@deleted.invalid', the name
+-- 'Deleted customer', the password hash '!' (which no password matches) and
+-- the Google subject NULL: the same shape as the placeholder accounts of V3.
+-- The real email is free again at once, for a new account that has nothing to
+-- do with this one.
+--
+-- NULL for an account that is in use.
+ALTER TABLE users ADD COLUMN deleted_at TIMESTAMPTZ;

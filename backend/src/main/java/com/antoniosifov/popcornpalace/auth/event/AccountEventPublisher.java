@@ -1,6 +1,7 @@
 package com.antoniosifov.popcornpalace.auth.event;
 
 import com.antoniosifov.popcornpalace.auth.event.AccountEvent.Account;
+import com.antoniosifov.popcornpalace.auth.event.AccountEvent.Deletion;
 import com.antoniosifov.popcornpalace.auth.event.AccountEvent.PasswordReset;
 import com.antoniosifov.popcornpalace.outbox.Outbox;
 import com.antoniosifov.popcornpalace.user.User;
@@ -51,9 +52,30 @@ public class AccountEventPublisher
                 AccountEvent.CURRENT_VERSION,
                 clock.instant().truncatedTo(ChronoUnit.MILLIS),
                 new Account(user.getId(), user.getEmail(), user.getDisplayName()),
-                new PasswordReset(url, expiresAt));
+                new PasswordReset(url, expiresAt),
+                null);
 
         // Keyed by account: if one account asks twice, the emails arrive in the order asked.
+        outbox.appendConfidential(topic, user.getId().toString(), event.type(), eventId, event);
+    }
+
+    /**
+     * Call inside the transaction that deletes the account, before the account
+     * is erased: this is the last moment its email is known, and the event takes
+     * it along so that one more message can say the account is gone.
+     */
+    public void accountDeleted(User user, int cancelledBookings)
+    {
+        UUID eventId = UUID.randomUUID();
+        AccountEvent event = new AccountEvent(
+                eventId,
+                AccountEvent.ACCOUNT_DELETED,
+                AccountEvent.CURRENT_VERSION,
+                clock.instant().truncatedTo(ChronoUnit.MILLIS),
+                new Account(user.getId(), user.getEmail(), user.getDisplayName()),
+                null,
+                new Deletion(cancelledBookings));
+
         outbox.appendConfidential(topic, user.getId().toString(), event.type(), eventId, event);
     }
 
@@ -62,8 +84,9 @@ public class AccountEventPublisher
     {
         /**
          * Created at startup if it does not exist. Kafka normally keeps messages for a
-         * week; these can carry a reset link, so they are dropped after about as
-         * long as such a link could matter.
+         * week; these can carry a reset link, or the email of an account that has
+         * just been deleted, so they are dropped after about as long as either
+         * could matter.
          */
         @Bean
         NewTopic accountEventsTopic(@Value("${app.events.account-topic}") String topic,

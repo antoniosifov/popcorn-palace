@@ -23,7 +23,7 @@ A movie ticket booking backend built with Java 21 and Spring Boot 4. It manages 
 - Business rules enforced by database constraints, so they hold under concurrency
 - Uniform error responses in the RFC 9457 "problem details" format with machine-readable codes
 - Observability built in: health probes, Prometheus metrics for the business (holds, bookings, payments, outbox backlog, open seat maps) as well as the runtime, and one OpenTelemetry trace from the booking request through the outbox and Kafka to the ticket email, with the trace id in every response
-- 263 automated tests, most of them calling the API over HTTP against real PostgreSQL, Redis and Kafka
+- 280 automated tests, most of them calling the API over HTTP against real PostgreSQL, Redis and Kafka
 
 ## Architecture
 
@@ -93,6 +93,7 @@ Base URL: `http://localhost:8080/api/v1`. Interactive documentation: http://loca
 | `POST` | `/auth/password-reset/confirm` | Set a new password with the token from the emailed link | anyone | `204` |
 | `POST` | `/auth/google` | Sign in with a Google ID token, returns a token | anyone | `200` |
 | `GET` | `/users/me` | The account that owns the token | logged in | `200` |
+| `POST` | `/users/me/delete` | Delete that account for good, with its password if it has one | logged in | `204` |
 | `GET` | `/movies` | List movies (paginated) | anyone | `200` |
 | `GET` | `/movies/{id}` | Get a movie | anyone | `200` |
 | `POST` | `/movies` | Add a movie | admin | `201` + `Location` |
@@ -186,6 +187,19 @@ What is left: a request for a registered email does two inserts more than one fo
 - **Off unless configured.** Without `GOOGLE_CLIENT_ID` the endpoint answers `404 GOOGLE_SIGN_IN_DISABLED`, and the application never contacts Google.
 
 `GoogleSignInApiTest` runs against a stand-in that publishes signing keys over HTTP the way Google does, so the tokens in the tests are verified by the same code path as real ones: a forged signature, another site's audience, another issuer, an expired token and a nonce from another sign-in are all refused, with one answer that does not say which check failed.
+
+### Deleting an account
+
+`POST /users/me/delete`, with the account's password in the body if it has one. A `POST` and not a `DELETE`: the password must travel with the request and must not be in the address, and a body on a `DELETE` is something clients and proxies are free to drop.
+
+- **Deleted means that nothing says whose it was.** The row in `users` stays, because bookings and payments point at it and a cinema keeps the record of what it sold and refunded. Its email becomes `deleted-<id>@deleted.invalid`, its name `Deleted customer`, its password hash `!`, which no password matches, and its Google subject is cleared (`User.erase`, migration `V11`). The real email is free at once: registering with it, or signing in with the same Google account, opens a new account that has none of the old bookings.
+- **Tickets that could still be used are cancelled and refunded.** A booking for a showtime that has not begun, owned by nobody, would be a seat that cannot be sat in or given back. They are cancelled in the same transaction that erases the account, each the way [a single cancellation](#cancelling-a-booking) works: the seats go back on sale, the refund is recorded as owed and made after the commit, and one that fails is retried by the reconciliation job. Bookings for showtimes that are over stay as they are.
+- **A purchase cannot slip past a deletion.** Without care, a payment in flight could save a booking a moment after the account's bookings were cancelled. Saving a booking therefore takes a shared lock on the account's row (`SELECT ... FOR SHARE`) and deleting takes an exclusive one. Whichever comes second waits: a deletion then finds the new booking and cancels it; a booking then finds the account gone, fails, and the charge is refunded like any booking that could not be saved.
+- **Who may.** An account with a password must send it (`400 PASSWORD_INCORRECT` otherwise), so a browser left open is not enough; these attempts count against the same limit as logins, because the answer says whether a password is right. An account opened with Google has no password and is deleted on its session alone. An administrator is refused (`409 ACCOUNT_NOT_DELETABLE`): the cinema would be left with nobody to run it, and the next start would quietly create the configured administrator again.
+- **Every session ends**, through the same session version that [a new password](#a-forgotten-password) raises. If Redis forgets that within the hour, a token of the deleted account still says nothing about who it was and buys nothing: `/users/me` and every purchase check the account itself.
+- **The email is also removed from where it was copied to.** Events carry the customer's email, so that an email can be written from them, and published events are kept in the outbox for a week. Deleting the account deletes its published events and marks the ones still waiting as confidential, which makes the relay delete them the moment Kafka has them: the cancellations written a moment earlier, and one last `AccountDeleted` event from which the notifications service writes a farewell. A pending reset link is deleted too.
+
+What it cannot reach is what has already left: the messages in Kafka, which expire on the topic's schedule (an hour for account events; for booking events the broker's default week, counted from when a log segment was last written to), and the emails themselves.
 
 ### Request bodies
 
@@ -420,6 +434,7 @@ Validation failures list every rejected field:
 | `400` | `SEAT_NOT_IN_HALL` | Holding a seat that is not in the showtime's hall |
 | `400` | `TOO_MANY_SEATS` | Holding more than eight seats at once |
 | `400` | `RESET_LINK_INVALID` | A password reset token that is unknown, expired, replaced by a newer one or already used |
+| `400` | `PASSWORD_INCORRECT` | Deleting an account without its password, or with a wrong one |
 | `401` | `UNAUTHENTICATED` | No access token, or one that is invalid or expired (with a `WWW-Authenticate: Bearer` header) |
 | `401` | `INVALID_CREDENTIALS` | Login with an unknown email or a wrong password |
 | `401` | `GOOGLE_SIGN_IN_FAILED` | A Google ID token that fails any check: signature, issuer, audience, expiry or nonce |
@@ -758,6 +773,7 @@ Every log line names the application, trace and span (`[popcorn-palace,4bf92f35�
 | `V8` | How a movie is presented (description, tagline, poster, still, trailer, director, cast) and where it came from (`tmdb_id`, popularity, whether it is in cinemas) |
 | `V9` | A forgotten password: hashed, expiring reset tokens (one per account); a session version on every account, raised when the password changes; outbox events that are deleted as soon as they are published |
 | `V10` | Signing in with Google: the Google subject an account is connected to, and whether the account's email was ever proven |
+| `V11` | Deleting an account: when it was deleted. The row stays, with nothing in it that says whose it was |
 
 `V2` migrates existing data instead of dropping it: each distinct theater name becomes a hall with 15 × 20 seats (the first API accepted seat numbers 1–300), the old showtime price becomes its standard price, and each booking is pointed at its seat and keeps the price it was sold for. `V3` gives the user ids carried by older bookings placeholder accounts that cannot be logged into, so the new foreign key holds. `V4` turns each existing single-seat booking into an order with one seat row. `SchemaMigrationTest` builds a database at `V1`, fills it, migrates to the latest version and checks the result.
 
@@ -852,4 +868,4 @@ Windows:
 
 Docker must be running: the API tests start disposable PostgreSQL, Redis and Kafka containers through Testcontainers and call the application over HTTP, so they exercise JSON mapping, validation, security, transactions, migrations, constraints, the Redis scripts, the outbox, the live seat map and the management endpoints together. Rules that need no database (text normalization, request validation, sort allow-list) have plain unit tests.
 
-Current suite: **263 tests passing**. The notifications service has its own suite, see its [README](../notifications/README.md).
+Current suite: **280 tests passing**. The notifications service has its own suite, see its [README](../notifications/README.md).

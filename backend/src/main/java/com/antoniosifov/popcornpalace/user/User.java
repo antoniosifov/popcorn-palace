@@ -28,8 +28,11 @@ public class User
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    /** Always lowercase; see {@link #normalizeEmail}. */
-    @Column(nullable = false, length = 254, updatable = false)
+    /**
+     * Always lowercase; see {@link #normalizeEmail}. Nothing changes it except
+     * {@link #erase}, which replaces it with an address that is nobody's.
+     */
+    @Column(nullable = false, length = 254)
     private String email;
 
     /** A BCrypt hash. The plain password is never stored or logged. */
@@ -57,6 +60,10 @@ public class User
     /** Whether the person behind the account has shown that the email is theirs. */
     @Column(name = "email_verified", nullable = false)
     private boolean emailVerified;
+
+    /** When the owner deleted the account; null for an account in use. See {@link #erase}. */
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
 
     public User(String email, String passwordHash, String displayName, Role role, Instant createdAt)
     {
@@ -111,6 +118,33 @@ public class User
     {
         this.passwordHash = newPasswordHash;
         this.sessionVersion++;
+    }
+
+    /** Whether there is a password to ask for. An account opened with Google has none. */
+    public boolean hasPassword()
+    {
+        return !NO_PASSWORD.equals(passwordHash);
+    }
+
+    public boolean isDeleted()
+    {
+        return deletedAt != null;
+    }
+
+    /**
+     * Deletes the account at its owner's request. The row stays, because
+     * bookings and payments point at it; everything that says whose it was
+     * goes. Nobody can log in to it or reach it through Google afterwards, the
+     * sessions it had end, and the email is free for a new account.
+     */
+    public void erase(Instant now)
+    {
+        this.email = "deleted-" + id + "@deleted.invalid";
+        this.displayName = "Deleted customer";
+        this.googleSubject = null;
+        this.emailVerified = false;
+        this.deletedAt = now;
+        removePassword();
     }
 
     /** The single definition of "the same email": trimmed and lowercased. */

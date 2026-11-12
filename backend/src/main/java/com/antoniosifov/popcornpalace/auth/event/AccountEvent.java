@@ -10,12 +10,16 @@ import java.util.UUID;
  * without a new {@link #version}.
  *
  * <p>Unlike a booking event it can carry a secret: {@link PasswordReset#url}
- * lets whoever holds it set the account's password. It is therefore written to
- * the outbox as confidential, and its topic keeps messages for an hour only.
+ * lets whoever holds it set the account's password. And the last event of an
+ * account, {@link #ACCOUNT_DELETED}, carries the email of somebody who has just
+ * asked for it to be forgotten. Both are therefore written to the outbox as
+ * confidential, and the topic keeps messages for an hour only.
  *
- * @param eventId identifies this event across redeliveries; consumers use it to ignore duplicates
- * @param type    {@link #PASSWORD_RESET_REQUESTED}
- * @param version schema version of this payload
+ * @param eventId       identifies this event across redeliveries; consumers use it to ignore duplicates
+ * @param type          {@link #PASSWORD_RESET_REQUESTED} or {@link #ACCOUNT_DELETED}
+ * @param version       schema version of this payload
+ * @param passwordReset present for {@link #PASSWORD_RESET_REQUESTED}
+ * @param deletion      present for {@link #ACCOUNT_DELETED}
  */
 public record AccountEvent(
         UUID eventId,
@@ -23,10 +27,12 @@ public record AccountEvent(
         int version,
         Instant occurredAt,
         Account account,
-        PasswordReset passwordReset
+        PasswordReset passwordReset,
+        Deletion deletion
 )
 {
     public static final String PASSWORD_RESET_REQUESTED = "PasswordResetRequested";
+    public static final String ACCOUNT_DELETED = "AccountDeleted";
     public static final int CURRENT_VERSION = 1;
 
     public record Account(UUID id, String email, String displayName)
@@ -38,6 +44,11 @@ public record AccountEvent(
      * @param expiresAt the link stops working at this moment
      */
     public record PasswordReset(String url, Instant expiresAt)
+    {
+    }
+
+    /** @param cancelledBookings how many upcoming bookings were cancelled and refunded with the account */
+    public record Deletion(int cancelledBookings)
     {
     }
 }
